@@ -1,0 +1,1426 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#020408" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="STORMPATH" />
+  <title>Storm Path Web 1.4.0</title>
+  <!-- web HUD = 1.4.0 voice + intersect cone 20260909w -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <style>
+    :root {
+      --bg:#020408; --panel:#060d14; --card:#0a1520; --border:rgba(0,229,255,.18);
+      --text:#e8fbff; --muted:#8aa4b3; --dim:#6F8296;
+      --cyan:#00e5ff; --amber:#ffab00; --green:#00e676; --red:#ff3d3d;
+    }
+    * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+    html, body {
+      margin:0; background:var(--bg); color:var(--text);
+      font-family:"Segoe UI", system-ui, sans-serif;
+      height:100%; height:100dvh; max-height:100dvh; overflow:hidden;
+    }
+    .app { display:flex; flex-direction:column; height:100%; height:100dvh; min-height:0; }
+    .topbar {
+      flex-shrink:0; background:var(--panel); border-bottom:1px solid var(--border);
+      padding:6px 10px 8px; padding-top:max(6px, env(safe-area-inset-top));
+    }
+    .brand {
+      display:flex; align-items:center; gap:8px;
+      font-family:"Courier New", monospace; font-weight:900; letter-spacing:3px;
+      color:var(--cyan); font-size:15px; text-shadow:0 0 16px rgba(0,229,255,.35);
+    }
+    .mark { width:9px; height:9px; background:var(--cyan); box-shadow:0 0 10px var(--cyan); }
+    .clock { margin-left:auto; color:var(--cyan); letter-spacing:0; font-size:12px; font-weight:700; }
+    .nav { display:flex; gap:6px; margin-top:8px; }
+    .nav button {
+      flex:1; min-height:40px; background:transparent; color:var(--dim);
+      border:1px solid var(--border); letter-spacing:1.4px; font-weight:800; font-size:10px;
+      clip-path:polygon(8px 0,100% 0,calc(100% - 8px) 100%,0 100%); cursor:pointer;
+    }
+    .nav button.active { color:var(--cyan); border-color:var(--cyan); background:rgba(0,229,255,.1); }
+    .badge-row { margin-top:6px; }
+    .badge {
+      display:inline-block; font:700 10px/1 "Courier New",monospace; letter-spacing:.8px;
+      border:1px solid var(--amber); color:var(--amber); padding:4px 8px;
+    }
+    .badge.live { border-color:var(--green); color:var(--green); }
+    .badge.off { border-color:var(--dim); color:var(--dim); }
+    .badge-row { display:flex; flex-wrap:wrap; gap:6px; }
+    .btn.on { background:var(--green); color:#041016; border-color:var(--green); }
+    .cone-card { border-color:var(--amber); }
+    .cone-card.hot { border-color:var(--red); color:var(--red); }
+    .stage { flex:1 1 auto; position:relative; overflow:hidden; min-height:0; }
+    .screen { display:none; height:100%; overflow:auto; -webkit-overflow-scrolling:touch; }
+    .screen.active { display:block; }
+    #screen-map.screen.active { overflow:hidden; position:relative; height:100%; }
+    .pad { padding:16px 14px 36px; }
+    #map, #map.leaflet-container {
+      position:absolute !important; inset:0 !important;
+      width:100% !important; height:100% !important; background:#041018;
+      z-index:0 !important;
+    }
+    #map .sp-base-tiles { filter:invert(1) hue-rotate(180deg) brightness(.88) contrast(.92); }
+    .kicker { color:var(--cyan); letter-spacing:2px; font-size:11px; font-weight:700; }
+    .hero { font-size:28px; font-weight:800; margin:6px 0 4px; }
+    .muted { color:var(--muted); }
+    .card { border:1px solid var(--border); background:var(--card); padding:12px; margin-top:10px; }
+    .btn { min-height:48px; border:0; font-weight:800; letter-spacing:1.2px; cursor:pointer; width:100%; margin-top:10px; }
+    .btn.primary { background:var(--cyan); color:#041016; }
+    .btn.ghost { background:transparent; color:var(--amber); border:1px solid var(--amber); }
+    .btn[hidden] { display:none !important; }
+    .chips { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0; }
+    .chip-src { border:1px solid var(--border); padding:5px 8px; font-size:10px; letter-spacing:.6px; color:var(--muted); cursor:pointer; }
+    .chip-src.on { border-color:var(--green); color:var(--green); }
+    .gps-gate {
+      position:absolute; top:8px; left:8px; right:88px; z-index:500;
+      min-height:40px; max-height:44px; overflow:hidden;
+      background:rgba(6,13,20,.94); border:1px solid var(--cyan); color:var(--text);
+      cursor:pointer; text-align:left; padding:8px 12px;
+      font:800 11px/1.1 "Courier New",monospace; letter-spacing:1px;
+    }
+    .gps-gate span { display:none; }
+    .gps-gate[hidden] { display:none !important; }
+    .zooms { position:absolute; right:10px; top:8px; z-index:500; display:flex; flex-direction:column; gap:6px; }
+    .zooms button {
+      width:36px; height:36px; border:1px solid var(--cyan);
+      background:rgba(6,13,20,.92); color:var(--cyan); font-size:18px; font-weight:800;
+    }
+    #recenter {
+      width:auto; min-width:36px; height:auto; min-height:36px; padding:4px 6px;
+      font-size:8px; letter-spacing:.6px; line-height:1.1;
+    }
+    .next {
+      position:absolute; left:10px; right:90px; bottom:72px; z-index:500;
+      background:rgba(6,13,20,.92); border:1px solid var(--amber); border-left:4px solid var(--amber);
+      padding:10px 12px; pointer-events:none;
+    }
+    .next .mi { color:var(--amber); font-weight:800; font-size:16px; font-family:"Courier New",monospace; }
+    .next .ins { font-size:13px; margin-top:2px; }
+    .next .dst { color:var(--muted); font-size:11px; margin-top:3px; }
+    .speed {
+      position:absolute; right:10px; bottom:72px; width:70px; height:70px; z-index:500;
+      border-radius:35px; border:2px solid var(--cyan); background:rgba(6,13,20,.92);
+      display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none;
+    }
+    .speed b { font-size:22px; line-height:1; font-family:"Courier New",monospace; }
+    .speed span { color:var(--cyan); font-size:10px; letter-spacing:1px; }
+    .dock {
+      position:absolute; left:10px; right:10px; bottom:10px; z-index:500;
+      display:flex; gap:8px; align-items:stretch;
+    }
+    .search-pill {
+      flex:1; min-height:48px; display:flex; flex-direction:column; justify-content:center;
+      background:rgba(6,13,20,.94); border:1px solid var(--cyan); color:var(--text);
+      text-align:left; padding:6px 12px; cursor:pointer;
+      clip-path:polygon(10px 0,100% 0,calc(100% - 10px) 100%,0 100%);
+    }
+    .search-pill small { color:var(--cyan); letter-spacing:1.2px; font-size:9px; font-weight:800; }
+    .dock-btn {
+      width:52px; min-height:48px; flex-shrink:0; background:rgba(6,13,20,.94);
+      color:var(--cyan); border:1px solid var(--cyan); font-size:8px; letter-spacing:.6px; font-weight:800;
+    }
+    .dock-btn.amber { color:var(--amber); border-color:var(--amber); }
+    .bottom {
+      flex-shrink:0; background:var(--panel); border-top:1px solid var(--border);
+      padding:6px 12px; padding-bottom:max(8px, env(safe-area-inset-bottom));
+      font:700 10px/1.3 "Courier New",monospace; color:var(--muted); letter-spacing:.4px;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    .sheet {
+      display:none; position:absolute; inset:auto 0 0; background:var(--panel);
+      border-top-left-radius:16px; border-top-right-radius:16px; padding:14px 16px 28px;
+      z-index:700; max-height:86%; overflow:auto;
+    }
+    .sheet.open { display:block; }
+    input { width:100%; min-height:48px; background:var(--bg); color:var(--text); border:1px solid var(--border); padding:0 12px; }
+    .hit { padding:12px 0; border-bottom:1px solid var(--border); cursor:pointer; }
+    .hit.active { background:#0C1C24; }
+    .toast {
+      display:none; position:absolute; left:16px; right:70px; top:96px; bottom:auto;
+      background:#0C1C24; border:1px solid var(--cyan); color:var(--cyan);
+      text-align:center; padding:10px; z-index:800; letter-spacing:1px; font-weight:700; font-size:12px;
+    }
+    .toast.show { display:block; }
+    .src-rail {
+      position:fixed; top:0; right:0; bottom:0; width:min(360px, 88vw); z-index:850;
+      background:rgba(6,13,20,.98); border-left:1px solid var(--border);
+      transform:translateX(110%); transition:transform .2s ease; display:flex; flex-direction:column;
+      padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom);
+    }
+    .src-rail.open { transform:translateX(0); }
+    .src-rail header {
+      display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--border);
+      font:800 11px/1 "Courier New",monospace; letter-spacing:1.4px; color:var(--cyan);
+    }
+    .src-rail header button {
+      margin-left:auto; min-width:36px; min-height:36px; border:1px solid var(--cyan);
+      background:transparent; color:var(--cyan); font-size:18px;
+    }
+    .src-nav { display:flex; flex-wrap:wrap; gap:6px; padding:10px 12px; border-bottom:1px solid var(--border); }
+    .src-nav button {
+      border:1px solid var(--border); background:transparent; color:var(--muted);
+      min-height:32px; padding:0 8px; font-size:9px; letter-spacing:.6px; font-weight:800;
+    }
+    .src-nav button.on { border-color:var(--cyan); color:var(--cyan); }
+    .src-body { flex:1; overflow:auto; -webkit-overflow-scrolling:touch; padding:10px 12px 24px; }
+    .src-card {
+      border:1px solid var(--border); background:var(--card); padding:10px; margin-top:8px;
+    }
+    .src-card .t { font:800 13px/1.2 "Segoe UI",sans-serif; }
+    .src-card .b { color:var(--muted); font-size:12px; margin-top:4px; }
+    .src-card .w { color:var(--cyan); font-size:10px; letter-spacing:.6px; margin-top:6px; font-family:"Courier New",monospace; }
+    .src-del {
+      margin-top:8px; min-height:32px; border:1px solid var(--red); background:transparent; color:var(--red);
+      font-size:10px; letter-spacing:1px; font-weight:800; width:100%;
+    }
+    .grid { display:flex; flex-wrap:wrap; gap:8px; }
+    .chip { width:calc(50% - 4px); border:1px solid var(--border); padding:12px; }
+    .clockrow { display:flex; gap:6px; }
+    .cell { flex:1; border:1px solid var(--border); text-align:center; padding:10px 0; }
+    .cell b { display:block; font-size:20px; }
+    .cell span { color:var(--dim); font-size:9px; letter-spacing:1px; }
+    .scope {
+      width:220px; height:220px; margin:12px auto; border-radius:110px; overflow:hidden;
+      border:1px solid var(--border); background:#041018; position:relative;
+    }
+    .scope img { width:100%; height:100%; object-fit:cover; }
+    .scope .wait {
+      position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+      color:var(--muted); font-size:11px; letter-spacing:1px; text-align:center; padding:16px;
+      pointer-events:none;
+    }
+    .row { display:flex; justify-content:space-between; gap:12px; border-bottom:1px solid var(--border); padding:12px 0; }
+    .row b { display:block; }
+    .row span { color:var(--muted); font-size:12px; }
+    .toggle { border:1px solid var(--cyan); background:transparent; color:var(--cyan); min-width:64px; min-height:36px; font-weight:800; }
+    .dock-btn { position:relative; }
+    .dock-btn img { width:22px; height:22px; object-fit:contain; display:block; margin:0 auto 2px; }
+    .leaflet-control-attribution { display:none !important; }
+    .leaflet-control-zoom { display:none !important; }
+    .banner {
+      position:absolute; top:8px; left:8px; right:8px; z-index:520;
+      background:rgba(40,8,8,.94); border:1px solid var(--red); color:#ffd7d7;
+      padding:8px 10px; font-size:11px; letter-spacing:.4px; display:none;
+    }
+    .banner.show { display:block; }
+    .zooms.under-banner { top:58px; }
+    .radar-key {
+      position:absolute; left:10px; top:8px; z-index:500;
+      font:700 8px/1.2 "Courier New",monospace; letter-spacing:.7px; color:var(--cyan);
+      background:rgba(6,13,20,.9); border:1px solid var(--border); padding:5px 8px;
+      pointer-events:none;
+    }
+    .radar-key.under-banner { top:58px; }
+    .banner b { display:block; letter-spacing:1px; font-size:10px; color:var(--red); }
+    .storm-path {
+      position:absolute; left:8px; right:8px; bottom:148px; z-index:530;
+      background:rgba(8,28,40,.96); border:1px solid var(--cyan); color:var(--text);
+      padding:8px 10px; font-size:11px; letter-spacing:.3px; display:none;
+    }
+    .storm-path.show { display:block; }
+    .storm-path b { display:block; letter-spacing:1px; font-size:10px; color:var(--cyan); }
+    .sheet { z-index:700; }
+    .sheet h3 { margin:4px 0 12px; }
+    .veh-grid, .intel-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+    .tile {
+      border:1px solid var(--border); background:var(--card); color:var(--text);
+      min-height:88px; padding:10px 8px 8px; text-align:left; cursor:pointer;
+    }
+    .tile.selected, .tile.active { border-color:var(--cyan); box-shadow:0 0 0 1px var(--cyan); }
+    .tile img { height:44px; width:auto; max-width:100%; object-fit:contain; display:block; margin-bottom:6px; }
+    .tile .t { display:block; font:800 10px/1 "Courier New",monospace; letter-spacing:1px; color:var(--cyan); }
+    .tile .d { display:block; color:var(--muted); font-size:11px; margin-top:3px; }
+    .chips-row { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0; }
+    .chip-btn {
+      border:1px solid var(--border); background:transparent; color:var(--text);
+      min-height:36px; padding:0 10px; font-size:10px; letter-spacing:1px; font-weight:800;
+    }
+    .chip-btn.active { border-color:var(--cyan); color:var(--cyan); }
+    textarea {
+      width:100%; min-height:72px; margin-top:10px; background:var(--bg); color:var(--text);
+      border:1px solid var(--border); padding:10px; font:14px/1.4 "Segoe UI",sans-serif;
+    }
+    .alert-card {
+      border:1px solid var(--amber); background:rgba(255,171,0,.06); padding:12px; margin-top:10px;
+    }
+    .alert-card.sev-extreme, .alert-card.sev-severe { border-color:var(--red); background:rgba(255,61,61,.08); }
+    .alert-card .ev { font:800 13px/1.2 "Courier New",monospace; letter-spacing:.8px; }
+    .alert-card .hd { color:var(--muted); font-size:12px; margin-top:6px; }
+    .hourly { display:flex; gap:8px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:6px; }
+    .hour { min-width:72px; border:1px solid var(--border); padding:10px 8px; text-align:center; }
+    .hour b { display:block; font-size:16px; }
+    .back { display:none; border:1px solid var(--border); background:transparent; color:var(--cyan); min-width:36px; min-height:36px; font-size:18px; }
+    .back.show { display:inline-flex; align-items:center; justify-content:center; }
+    .sheet-head { display:flex; align-items:flex-start; gap:8px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="brand"><span class="mark"></span>STORMPATH<span class="clock" id="clock">--:--:--</span></div>
+      <div class="nav">
+        <button data-screen="driver">⬤ DRIVER</button>
+        <button data-screen="map" class="active">MAP</button>
+        <button data-screen="weather">WEATHER</button>
+        <button data-screen="settings">SETTINGS</button>
+      </div>
+      <div class="badge-row">
+        <div class="badge" id="top-gps-label">GPS WAIT</div>
+        <div class="badge" id="top-radar-label">RADAR WAIT</div>
+        <div class="badge off" id="voiceBadge">VOICE OFF</div>
+        <div class="badge" id="badge">VIEW · MURPHYSBORO — NOT GPS</div>
+      </div>
+    </div>
+    <div class="stage">
+      <section id="screen-driver" class="screen"><div class="pad">
+        <div class="kicker">DRIVER</div>
+        <div class="hero" id="drvState">SAFE MODE</div>
+        <div class="muted" id="drvConf">CONFIDENCE: N/A UNKNOWN</div>
+        <div class="chips" id="srcChips"></div>
+        <div class="card">
+          <div class="kicker" id="drvLive">READY</div>
+          <h2 style="margin:6px 0 8px" id="drvTitle">You're on the map</h2>
+          <p class="muted" id="drvCopy">Map opens on Murphysboro, Illinois — VIEW only. Device GPS is the only LIVE NWS / NOAA trigger. IP location is never GPS.</p>
+        </div>
+        <button class="btn primary" id="btnSearch">START DRIVE</button>
+        <button class="btn ghost" id="btnGps">USE MY LIVE GPS</button>
+        <div class="kicker" style="margin-top:18px">TIME TO ARRIVE</div>
+        <div class="clockrow" id="eta">
+          <div class="cell"><b>0</b><span>DAYS</span></div>
+          <div class="cell"><b>0</b><span>HOURS</span></div>
+          <div class="cell"><b>0</b><span>MIN</span></div>
+          <div class="cell"><b>0</b><span>SEC</span></div>
+        </div>
+        <div class="card" id="nowCard"><b>↑</b> Set a destination to load the route</div>
+        <button class="btn ghost" id="btnVoice" type="button">VOICE: OFF</button>
+        <div class="card cone-card" id="coneCard">
+          <div class="kicker">INTERSECT CONE</div>
+          <div id="coneCopy">Awaiting GPS + route + radar samples.</div>
+        </div>
+      </div></section>
+
+      <section id="screen-map" class="screen active">
+        <div id="map"></div>
+        <div class="zooms">
+          <button type="button" id="zoomIn" aria-label="Zoom in">+</button>
+          <button type="button" id="zoomOut" aria-label="Zoom out">−</button>
+          <button type="button" id="recenter" hidden>RECENTER</button>
+        </div>
+        <button class="gps-gate" id="gpsGate" type="button">USE MY LIVE GPS<span>Map is Murphysboro, IL — VIEW only. Device GPS is the only LIVE NWS / NOAA trigger. IP location is never GPS.</span></button>
+        <div class="banner" id="alertBanner"></div>
+        <div class="storm-path" id="stormPath"></div>
+        <div class="radar-key" id="radarKey">RADAR WAIT</div>
+        <div class="next" id="nextHud">
+          <div class="mi" id="nextMi">—</div>
+          <div class="ins" id="nextIns">Set a destination</div>
+          <div class="dst" id="nextDst">SEARCH TO NAVIGATE</div>
+        </div>
+        <div class="speed"><b id="spd">--</b><span>MPH</span></div>
+        <div class="dock">
+          <button class="search-pill" id="mapSearch" type="button">
+            <small>SET DESTINATION</small>
+            <span id="mapSearchLabel">Town, state, or address</span>
+          </button>
+          <button class="dock-btn" id="btnMarker" type="button"><img id="vehThumb" alt="" hidden>MARKER</button>
+          <button class="dock-btn amber" id="btnReport" type="button">REPORT</button>
+        </div>
+      </section>
+
+      <section id="screen-weather" class="screen"><div class="pad">
+        <div class="kicker">WEATHER</div>
+        <div class="hero" id="wxState">SAFE MODE</div>
+        <div class="kicker" style="margin-top:16px">RADAR SCOPE</div>
+        <div class="scope">
+          <img id="radarImg" alt="NOAA radar" />
+          <div class="wait" id="radarWait">AWAITING GPS</div>
+        </div>
+        <div class="muted" style="text-align:center;font-size:11px">NWS BASE REFLECTIVITY — <span id="radarCap">VIEW</span><br>Empty circle = no precipitation returns, not a missing radar.</div>
+        <div class="kicker" style="margin-top:16px">CURRENT CONDITIONS</div>
+        <div class="grid" id="wxGrid"></div>
+        <div class="kicker" style="margin-top:16px">NEXT HOURS</div>
+        <div class="hourly" id="hourly"></div>
+        <div class="kicker" style="margin-top:16px">NWS ALERTS</div>
+        <div id="alerts"></div>
+        <div class="kicker" style="margin-top:16px">SOURCE STATUS</div>
+        <div id="wxSources" class="muted"></div>
+      </div></section>
+
+      <section id="screen-settings" class="screen"><div class="pad">
+        <div class="kicker">SETTINGS</div>
+        <div class="card"><b>AND-GATE</b><p class="muted" id="andGate">GPS=false WX=false RADAR=false</p></div>
+        <div class="row"><div><b>Speed units</b><span>Live GPS speed from this device</span></div><button class="toggle" id="setUnits">MPH</button></div>
+        <div class="row"><div><b>Map tiles</b><span>OpenStreetMap dark basemap</span></div><button class="toggle" type="button">OSM</button></div>
+        <div class="row"><div><b>Voice nav</b><span>Web Speech API · zero cost · client only · turn-by-turn</span></div><button class="toggle" id="btnVoice2" type="button">OFF</button></div>
+        <div class="row"><div><b>Storm Path Web 1.4.0</b><span>Live device GPS, National Weather Service, NOAA radar, OpenStreetMap, OSRM, Intersect Cone, voice. First finite GPS fix is the only NWS / NOAA WMS trigger that can leave SAFE MODE. AND-GATE requires GPS ∧ NWS ∧ radar. IP location is never GPS.</span></div></div>
+        <div class="row"><div><b>Driver intel</b><span>Remove pins stored on this device</span></div><button class="toggle" id="clearIntel" type="button">CLEAR</button></div>
+        <p><a href="privacy.html" style="color:var(--cyan)">Privacy policy</a></p>
+      </div></section>
+
+      <div class="sheet" id="sheet">
+        <div class="kicker">NAVIGATION</div>
+        <h3 style="margin:4px 0 12px">Set destination</h3>
+        <input id="q" placeholder="Town, state, or full US address" />
+        <div id="hits"></div>
+        <div id="pendingBox" hidden>
+          <div id="pendingLabel" style="font-weight:800;margin-top:10px"></div>
+          <div id="pendingSub" class="muted" style="margin:4px 0 8px"></div>
+          <button class="btn primary" id="goDrive" type="button">START DRIVE</button>
+        </div>
+        <button class="btn ghost" id="closeSheet">CLOSE</button>
+      </div>
+      <div class="sheet" id="vehSheet">
+        <div class="sheet-head">
+          <button class="back" id="vehBack" type="button" aria-label="Back">‹</button>
+          <div>
+            <div class="kicker" id="vehKicker">YOUR MARKER</div>
+            <h3 id="vehTitle">Choose a form</h3>
+          </div>
+          <button class="btn ghost" id="closeVeh" type="button" style="width:auto;margin:0 0 0 auto;min-height:40px;padding:0 12px">×</button>
+        </div>
+        <div id="vehHost"></div>
+        <p class="muted" id="vehNote">Tap a pack — its four markers pop up. Tap one and it stays on your GPS path.</p>
+      </div>
+      <div class="sheet" id="intelSheet">
+        <div class="sheet-head">
+          <div>
+            <div class="kicker">DRIVER INTEL</div>
+            <h3>Report what you see</h3>
+          </div>
+          <button class="btn ghost" id="closeIntel" type="button" style="width:auto;margin:0 0 0 auto;min-height:40px;padding:0 12px">×</button>
+        </div>
+        <div class="intel-grid" id="intelGrid"></div>
+        <div class="chips-row" id="intelSubs"></div>
+        <textarea id="intelNote" maxlength="140" placeholder="Optional note — shows on the pin (140 chars)"></textarea>
+        <button class="btn primary" id="postIntel" type="button" hidden>POST INTEL</button>
+        <p class="muted">Drops a pin at your live GPS fix (or map center if GPS is still acquiring). Stored on this device for 3 hours.</p>
+      </div>
+      <div class="toast" id="toast"></div>
+      <aside class="src-rail" id="srcRail" aria-label="Source reports">
+        <header>SOURCE REPORTS <button type="button" id="srcRailClose" aria-label="Close">×</button></header>
+        <nav class="src-nav" id="srcNav"></nav>
+        <div class="src-body" id="srcBody"></div>
+      </aside>
+    </div>
+    <div class="bottom" id="ticker">VIEW · MURPHYSBORO, IL — TAP GPS FOR LIVE NWS</div>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script>
+    const VIEW = { lat: 37.7645, lon: -89.3351 };
+    const RANK = { normal:0, caution:1, danger:2, stop:3 };
+    const UA = 'StormPath/1.4.0-web (voltcore-org hud; https://github.com/voltcore-org/storm-path; dominic.calandro1991@yahoo.com)';
+    const SOURCES = ['NOAA','NWS','DOT','EMERG MGMT','ROAD CLOSURES','SHELTERS'];
+    const LS_VEH = 'sp.vehicle.v1';
+    const LS_VOICE = 'sp.voice.v1';
+    const LS_INTEL = 'sp.intel.v1';
+    const INTEL_TTL = 3 * 60 * 60 * 1000;
+    const VEH_SECTIONS = [
+      { id:'vortex', label:'VORTEX', desc:'Storm forms', items:[
+        { id:'blaze', label:'BLAZE', desc:'Fire funnel', url:'vehicles/blaze.png' },
+        { id:'twister', label:'TWISTER', desc:'Classic funnel', url:'vehicles/twister.png' },
+        { id:'cell', label:'CELL', desc:'Radar green', url:'vehicles/cell.png' },
+        { id:'ion', label:'ION', desc:'Plasma funnel', url:'vehicles/ion.png' }
+      ]},
+      { id:'strike', label:'STRIKE', desc:'Lightning', items:[
+        { id:'flare', label:'FLARE', desc:'Fire strike', url:'vehicles/flare.png' },
+        { id:'bolt', label:'BOLT', desc:'Cloud to ground', url:'vehicles/bolt.png' },
+        { id:'volt', label:'VOLT', desc:'Radar green', url:'vehicles/volt.png' },
+        { id:'arc', label:'ARC', desc:'Plasma strike', url:'vehicles/arc.png' }
+      ]},
+      { id:'hail', label:'HAIL', desc:'Ice cores', items:[
+        { id:'ember', label:'EMBER', desc:'Fire cores', url:'vehicles/ember.png' },
+        { id:'ice', label:'ICE', desc:'Live hail', url:'vehicles/ice.png' },
+        { id:'glow', label:'GLOW', desc:'Radar green', url:'vehicles/glow.png' },
+        { id:'nova', label:'NOVA', desc:'Plasma cores', url:'vehicles/nova.png' }
+      ]},
+      { id:'rain', label:'RAIN', desc:'Falling water', items:[
+        { id:'lava', label:'LAVA', desc:'Fire rain', url:'vehicles/lava.png' },
+        { id:'pour', label:'POUR', desc:'Live rain', url:'vehicles/pour.png' },
+        { id:'acid', label:'ACID', desc:'Radar green', url:'vehicles/acid.png' },
+        { id:'neon', label:'NEON', desc:'Plasma rain', url:'vehicles/neon.png' }
+      ]},
+      { id:'cloud', label:'CLOUD', desc:'Storm mass', items:[
+        { id:'pyro', label:'PYRO', desc:'Fire cloud', url:'vehicles/pyro.png' },
+        { id:'nimbus', label:'NIMBUS', desc:'Live storm', url:'vehicles/nimbus.png' },
+        { id:'spore', label:'SPORE', desc:'Radar green', url:'vehicles/spore.png' },
+        { id:'pulse', label:'PULSE', desc:'Plasma cloud', url:'vehicles/pulse.png' }
+      ]}
+    ];
+    const INTEL_TYPES = {
+      unit:{ label:'UNIT', desc:'Police / enforcement', color:'#7ec8ff', photo:'intel/unit.png', subtypes:[{id:'visible',label:'VISIBLE'},{id:'opposite',label:'OPPOSITE SIDE'}] },
+      collision:{ label:'COLLISION', desc:'Crash on the road', color:'#ff3d3d', photo:'intel/collision.png', subtypes:[{id:'minor',label:'MINOR'},{id:'major',label:'MAJOR'}] },
+      object:{ label:'OBJECT', desc:'Tree, tire, rock, debris', color:'#ffab00', photo:'intel/object.png', subtypes:[{id:'debris',label:'DEBRIS'},{id:'tree',label:'TREE'},{id:'tire',label:'BLOWN TIRE'},{id:'rock',label:'ROCK'}] },
+      construction:{ label:'CONSTRUCTION', desc:'Work zone', color:'#ffab00', photo:'intel/construction.png', subtypes:[] },
+      closure:{ label:'CLOSURE', desc:'Lane or road closed', color:'#ff3d3d', photo:'intel/closure.png', subtypes:[] },
+      weather:{ label:'WEATHER', desc:'Flood, hail, ice, wind', color:'#ce93d8', photo:'intel/weather.png', subtypes:[{id:'flood',label:'FLOODED ROAD'},{id:'hail',label:'HAIL'},{id:'wind',label:'HIGH WIND'},{id:'ice',label:'ICE'}] },
+      disabled:{ label:'DISABLED', desc:'Vehicle stopped', color:'#00e5ff', photo:'intel/disabled.png', subtypes:[] },
+      pothole:{ label:'SURFACE', desc:'Pothole or damage', color:'#ffab00', photo:'intel/pothole.png', subtypes:[] }
+    };
+    function spEsc(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&','<':'<','>':'>','"':'"',"'":'&#39;'}[c])); }
+    function lsRead(k, fallback) {
+      try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? fallback : v; } catch (e) { return fallback; }
+    }
+    function lsWrite(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+    function visibleReports(src) {
+      const hide = {};
+      (S.dismissed || []).forEach(function(id){ hide[id] = true; });
+      return (S.reports[src] || []).filter(function(r){ return !hide[r.id]; });
+    }
+    function renderSrcRail() {
+      const nav = document.getElementById('srcNav');
+      const body = document.getElementById('srcBody');
+      if (!nav || !body) return;
+      nav.innerHTML = SOURCES.map(function(n){
+        const live = S.srcOk[n] ? ' LIVE' : '';
+        return '<button type="button" data-src="'+n+'" class="'+(S.srcTab===n?'on':'')+'">'+n+live+'</button>';
+      }).join('');
+      const rows = visibleReports(S.srcTab);
+      const status = S.srcOk[S.srcTab] ? 'FEED LIVE' : 'FEED WAIT';
+      if (!rows.length) {
+        body.innerHTML = '<div class="muted">'+status+' · 0 reports in '+spEsc(S.srcTab)+'</div>';
+        return;
+      }
+      body.innerHTML = '<div class="muted" style="margin-bottom:8px">'+status+' · '+rows.length+' reports</div>' + rows.map(function(r){
+        return '<div class="src-card"><div class="t">'+spEsc(r.title)+'</div><div class="b">'+spEsc(r.body)+'</div><div class="w">'+spEsc(r.when||'')+'</div><button type="button" class="src-del" data-del="'+spEsc(r.id)+'">DELETE</button></div>';
+      }).join('');
+    }
+    function openSrcRail(src) {
+      if (SOURCES.indexOf(src) >= 0) S.srcTab = src;
+      document.getElementById('srcRail').classList.add('open');
+      renderSrcRail();
+    }
+    function dismissReport(id) {
+      if (!id) return;
+      if ((S.dismissed || []).indexOf(id) < 0) S.dismissed.push(id);
+      lsWrite('sp.dismiss.v1', S.dismissed);
+      renderSrcRail();
+    }
+    async function loadOfficialSources() {
+      const bias = S.coords || S.view || VIEW;
+      const state = 'IL';
+      const jobs = [];
+      jobs.push((async function(){
+        const items = [];
+        if (S.radarAt) items.push({ id:'noaa-rv', source:'NOAA', title:'NEXRAD MOSAIC', body:'RainViewer / NOAA NEXRAD tiles at the live clock.', when: new Date(S.radarAt*1000).toLocaleString() });
+        if (S.radarUrl) items.push({ id:'noaa-wms', source:'NOAA', title:'NCEP CONUS REFLECTIVITY', body:'NOAA OpenGeo conus_bref_qcd WMS snapshot.', when: '' });
+        S.reports.NOAA = items;
+        S.srcOk.NOAA = !!(S.radar || S.radarUrl || S.radarAt);
+      })());
+      jobs.push((async function(){
+        S.reports.NWS = (S.alerts || []).map(function(a, i){
+          return { id:'nws-'+(a.event||i)+'-'+(a.expires||i), source:'NWS', title: a.event || 'NWS ALERT', body: [a.severity, a.headline, a.area].filter(Boolean).join(' · '), when: a.expires || '' };
+        });
+        S.srcOk.NWS = !!(S.wx || S.hourly);
+      })());
+      jobs.push((async function(){
+        const url = 'https://services2.arcgis.com/aIrBD8yn1TDTEXoz/arcgis/rest/services/Illinois_Roadway_Incidents/FeatureServer/0/query?where=1%3D1&outFields=OBJECTID,TRAFFIC_ITEM_TYPE_DESC,CRITICALITY_DESC,VERIFIED,ROAD_CLOSED,TRAFFIC_ITEM_DESCRIPTION,TRAFFIC_ITEM_DESCRIPTION_NO_EX,ORIGIN,Status,FullClosure,START_TIME&orderByFields=START_TIME%20DESC&resultRecordCount=20&outSR=4326&f=json';
+        const body = await fetchJson(url, 10000);
+        const feats = (body && body.features) || [];
+        S.reports.DOT = feats.map(function(f){
+          const a = (f && f.attributes) || {};
+          return {
+            id: 'dot-'+a.OBJECTID,
+            source: 'DOT',
+            title: String(a.TRAFFIC_ITEM_TYPE_DESC || 'IDOT INCIDENT').replace(/_/g,' '),
+            body: a.TRAFFIC_ITEM_DESCRIPTION || a.TRAFFIC_ITEM_DESCRIPTION_NO_EX || a.ORIGIN || ('closed=' + a.ROAD_CLOSED + ' · ' + (a.CRITICALITY_DESC||'')),
+            when: a.START_TIME ? new Date(a.START_TIME).toLocaleString() : 'IDOT'
+          };
+        });
+        S.srcOk.DOT = !!(body && Array.isArray(body.features));
+      })());
+      jobs.push((async function(){
+        const url = 'https://www.fema.gov/api/open/v2/DisasterDeclarationsSummaries?$filter=state%20eq%20%27'+state+'%27&$orderby=declarationDate%20desc&$top=8';
+        const body = await fetchJson(url, 10000);
+        const rows = (body && body.DisasterDeclarationsSummaries) || [];
+        const fema = rows.map(function(r){
+          return { id:'fema-'+r.disasterNumber, source:'EMERG MGMT', title: r.declarationTitle || r.incidentType || 'FEMA', body: [r.state, r.declarationType, r.incidentType, r.disasterNumber && ('DR-'+r.disasterNumber)].filter(Boolean).join(' · '), when: r.declarationDate ? String(r.declarationDate).slice(0,10) : '' };
+        });
+        const warns = (S.alerts || []).filter(function(a){ return /warning/i.test(a.event||'') || a.severity === 'Extreme' || a.severity === 'Severe'; }).map(function(a,i){
+          return { id:'em-nws-'+i+'-'+(a.event||''), source:'EMERG MGMT', title: a.event || 'WARNING', body: [a.severity, a.headline].filter(Boolean).join(' · '), when: a.expires || 'NWS' };
+        });
+        S.reports['EMERG MGMT'] = fema.concat(warns);
+        S.srcOk['EMERG MGMT'] = !!(body && Array.isArray(body.DisasterDeclarationsSummaries));
+      })());
+      jobs.push((async function(){
+        const url = 'https://services2.arcgis.com/aIrBD8yn1TDTEXoz/arcgis/rest/services/ClosureIncidents/FeatureServer/0/query?where=1%3D1&outFields=OBJECTID,ID,Location,St_Name,ClosureType,ConstructionType,DetourRoute,County,StartDate,NearTown&orderByFields=StartDate%20DESC&resultRecordCount=20&outSR=4326&f=json';
+        const body = await fetchJson(url, 10000);
+        const feats = (body && body.features) || [];
+        S.reports['ROAD CLOSURES'] = feats.map(function(f){
+          const a = (f && f.attributes) || {};
+          return { id:'close-'+(a.ID||a.OBJECTID), source:'ROAD CLOSURES', title: a.ClosureType || a.ConstructionType || 'CLOSURE', body: [a.Location, a.St_Name, a.DetourRoute, a.County].filter(Boolean).join(' · '), when: a.StartDate ? new Date(a.StartDate).toLocaleString() : 'IDOT' };
+        });
+        S.srcOk['ROAD CLOSURES'] = !!(body && Array.isArray(body.features));
+      })());
+      jobs.push((async function(){
+        const url = 'https://gis.fema.gov/arcgis/rest/services/NSS/OpenShelters/MapServer/0/query?where=1%3D1&outFields=shelter_id,shelter_name,address,city,state,shelter_status,evacuation_capacity&orderByFields=state&resultRecordCount=40&f=json';
+        const body = await fetchJson(url, 10000);
+        const feats = (body && body.features) || [];
+        S.reports.SHELTERS = feats.map(function(f){
+          const a = (f && f.attributes) || {};
+          return { id:'sh-'+(a.shelter_id||a.shelter_name), source:'SHELTERS', title: a.shelter_name || 'OPEN SHELTER', body: [a.address, a.city, a.state, a.shelter_status].filter(Boolean).join(' · '), when: 'FEMA NSS OPEN' };
+        });
+        S.srcOk.SHELTERS = !!(body && Array.isArray(body.features));
+      })());
+      await Promise.all(jobs);
+      paint();
+      if (document.getElementById('srcRail').classList.contains('open')) renderSrcRail();
+    }
+    function spComputeNextState(g, w, r, last) { return (g && w && r) ? (last || 'normal') : 'safe'; }
+    function classify(a) {
+      const e = (a.event||'').toLowerCase();
+      if ((e.includes('tornado warning') || a.severity==='Extreme') && a.urgency==='Immediate') return 'stop';
+      if (e.includes('tornado warning') || a.severity==='Extreme') return 'danger';
+      return 'caution';
+    }
+    function evaluate(list) {
+      if (!list || !list.length) return 'normal';
+      let worst = 'normal';
+      for (const a of list) { const c = classify(a); if (RANK[c] > RANK[worst]) worst = c; }
+      return worst;
+    }
+    const S = { screen:'map', gps:false, wx:false, radar:false, voice: !!lsRead(LS_VOICE, false), last:null, coords:null, view:{ lat:VIEW.lat, lon:VIEW.lon, why:'murphysboro' }, dest:null, route:null, hourly:null, hours:[], alerts:[], radarUrl:null, speed:null, step:null, lastSpoken:'', units:'MPH', vehView:null, intelPick:null, cam:{ mode:'follow', prog:false }, reports:{}, srcOk:{}, srcTab:'NWS', dismissed: lsRead('sp.dismiss.v1', []), cone:null, hidden:false };
+    const map = L.map('map', { zoomControl:false, minZoom:2, maxZoom:19, worldCopyJump:true }).setView([VIEW.lat, VIEW.lon], 13);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { minZoom:2, maxZoom:19, attribution:'&copy; OpenStreetMap', className:'sp-base-tiles' }).addTo(map);
+    const intelLayer = L.layerGroup().addTo(map);
+    let marker = null, destMark = null, line = null, radarTiles = null, watchId = null, coneLayer = L.layerGroup().addTo(map);
+    function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 2400); }
+    function kickMap() { try { map.invalidateSize(); } catch (e) {} }
+    function camShowRecenter() {
+      const el = document.getElementById('recenter');
+      if (el) el.hidden = S.cam.mode === 'follow';
+    }
+    function camProg(fn) {
+      S.cam.prog = true;
+      try { fn(); } finally { setTimeout(function(){ S.cam.prog = false; }, 80); }
+    }
+    function camUserGesture() {
+      if (S.cam.prog) return;
+      S.cam.mode = 'browse';
+      camShowRecenter();
+    }
+    function camFollowPan() {
+      if (S.cam.mode !== 'follow' || !S.coords) return;
+      camProg(function(){ map.panTo([S.coords.lat, S.coords.lon], { animate:false }); });
+    }
+    function camFollowZoom() {
+      const c = S.coords || S.view;
+      S.cam.mode = 'follow';
+      camShowRecenter();
+      camProg(function(){ map.setView([c.lat, c.lon], 16, { animate:true }); });
+    }
+    function camOverview() {
+      S.cam.mode = 'follow';
+      camShowRecenter();
+      if (line) {
+        camProg(function(){ map.fitBounds(line.getBounds(), { padding:[70,90], maxZoom:16, animate:true }); });
+        setTimeout(function(){
+          if (S.cam.mode === 'follow' && S.coords) camFollowZoom();
+        }, 1600);
+      } else if (S.coords) {
+        camFollowZoom();
+      }
+    }
+    map.on('zoomstart', camUserGesture);
+    map.on('dragstart', camUserGesture);
+
+    function speak(text, force) {
+      if (!S.voice && !force) return;
+      if (typeof window === 'undefined' || !window.speechSynthesis || !text) return;
+      try {
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(String(text));
+        u.rate = 1.05; u.pitch = 1; u.lang = 'en-US';
+        window.speechSynthesis.speak(u);
+      } catch (e) {}
+    }
+    function setVoice(on, announce) {
+      S.voice = !!on;
+      lsWrite(LS_VOICE, S.voice);
+      const a = document.getElementById('btnVoice');
+      const b = document.getElementById('btnVoice2');
+      const badge = document.getElementById('voiceBadge');
+      if (a) { a.textContent = S.voice ? 'VOICE: ON' : 'VOICE: OFF'; a.classList.toggle('on', S.voice); }
+      if (b) { b.textContent = S.voice ? 'ON' : 'OFF'; }
+      if (badge) { badge.textContent = S.voice ? 'VOICE ON' : 'VOICE OFF'; badge.classList.toggle('live', S.voice); badge.classList.toggle('off', !S.voice); }
+      if (announce && S.voice) speak('Voice navigation on.', true);
+    }
+    function computeCone() {
+      if (coneLayer) coneLayer.clearLayers();
+      const coords = (line && line.toGeoJSON && line.toGeoJSON().features && line.toGeoJSON().features[0] && line.toGeoJSON().features[0].geometry && line.toGeoJSON().features[0].geometry.coordinates) || (S._routeCoords || []);
+      if (!coords.length || !S.route) {
+        S.cone = { risk:'CLEAR', copy:'Awaiting GPS + route + radar samples.', samples:0 };
+        return;
+      }
+      const stride = Math.max(1, Math.floor(coords.length / 24));
+      const pts = [];
+      for (let i = 0; i < coords.length; i += stride) pts.push({ lon: coords[i][0], lat: coords[i][1] });
+      const geoms = S.alertGeoms || [];
+      const hits = [];
+      pts.forEach(function(p){
+        geoms.forEach(function(g){
+          if (g && g.geom && geomHits(g.geom, p.lat, p.lon)) hits.push(g.event || 'warning');
+        });
+      });
+      let risk = 'CLEAR';
+      let copy = 'No warning polygons on this drive. Cone tracks route samples against live NWS alerts.';
+      if (hits.length) {
+        risk = 'INTERSECT';
+        copy = hits[0] + ' crosses sampled route · ' + pts.length + ' samples · ' + Math.round(S.route.min) + ' min remaining.';
+      } else if (S.radar && S.route.miles > 0) {
+        risk = 'MONITOR';
+        copy = 'Radar live. ' + pts.length + ' samples along ' + S.route.miles.toFixed(1) + ' mi. No warning-class polygons on route.';
+      }
+      S.cone = { risk: risk, copy: copy, samples: pts.length };
+      const color = risk === 'INTERSECT' ? '#ff3d3d' : (risk === 'MONITOR' ? '#ffab00' : '#00e676');
+      pts.forEach(function(p, idx){
+        L.circleMarker([p.lat, p.lon], { radius: idx===0?5:3, color:color, weight:1, fillOpacity:0.5 }).addTo(coneLayer);
+      });
+      if (risk === 'INTERSECT' && S.voice) speak('Storm intersect on route. ' + copy);
+    }
+
+    function paint() {
+      const state = spComputeNextState(S.gps, S.wx, S.radar, S.last);
+      const label = state === 'safe' ? 'SAFE MODE' : state.toUpperCase();
+      document.getElementById('drvState').textContent = label;
+      document.getElementById('wxState').textContent = label;
+      document.getElementById('drvLive').textContent = S.gps ? 'LIVE FIX' : 'READY';
+      document.getElementById('drvTitle').textContent = S.gps ? "You're live" : "You're on the map";
+      document.getElementById('drvCopy').textContent = S.gps
+        ? 'Live GPS is on. Search a town or address, then Start Drive. Weather and radar stay on the live fix.'
+        : 'Map opens on Murphysboro, Illinois — VIEW only. Device GPS is the only LIVE NWS / NOAA trigger. IP location is never GPS.';
+      document.getElementById('btnGps').hidden = !!S.gps;
+      document.getElementById('andGate').textContent = `GPS=${S.gps} WX=${S.wx} RADAR=${S.radar}`;
+      document.getElementById('drvConf').textContent = S.gps && S.wx && S.radar
+        ? 'CONFIDENCE: HIGH  LIVE'
+        : (S.gps ? 'CONFIDENCE: MEDIUM  GPS LIVE · WX WAIT' : 'CONFIDENCE: N/A  VIEW');
+      const live = S.gps && S.wx && S.radar;
+      const badge = document.getElementById('badge');
+      badge.textContent = live ? 'WX + RADAR LIVE' : (!S.gps ? 'VIEW · MURPHYSBORO — NOT GPS' : 'WX/RADAR WAIT · SAFE MODE');
+      badge.classList.toggle('live', live);
+      const gpsB = document.getElementById('top-gps-label');
+      const radB = document.getElementById('top-radar-label');
+      if (gpsB) { gpsB.textContent = S.gps ? 'GPS LIVE' : 'GPS WAIT'; gpsB.classList.toggle('live', !!S.gps); }
+      if (radB) { radB.textContent = S.radar ? 'RADAR LIVE' : 'RADAR WAIT'; radB.classList.toggle('live', !!S.radar); }
+      const coneCopy = document.getElementById('coneCopy');
+      const coneCard = document.getElementById('coneCard');
+      if (coneCopy && S.cone) {
+        coneCopy.textContent = S.cone.risk + ' · ' + S.cone.copy;
+        if (coneCard) coneCard.classList.toggle('hot', S.cone.risk === 'INTERSECT');
+      }
+      document.getElementById('ticker').textContent = !S.gps
+        ? 'VIEW · MURPHYSBORO — NOT GPS'
+        : (S.alerts[0] ? S.alerts.map(a=>a.event).join(' · ') : (S.wx ? 'NO ACTIVE NWS ALERTS AT THE LIVE FIX' : 'NWS WAIT'));
+      document.getElementById('srcChips').innerHTML = SOURCES.map((n)=>{
+        const on = !!S.srcOk[n];
+        return `<button type="button" class="chip-src${on?' on':''}" data-src="${n}">${n}</button>`;
+      }).join('');
+      document.getElementById('wxSources').textContent = `NWS · ${S.wx?'LIVE':(S.hourly?'VIEW':'WAIT')}   NOAA · ${S.radar?'LIVE':(S.radarUrl?'VIEW':'WAIT')}   OSM · CONNECTED   OSRM · ${S.route?'CONNECTED':'IDLE'}`;
+      const h = S.hourly || {};
+      document.getElementById('wxGrid').innerHTML = [['TEMP', h.temperature||'--'],['WIND', h.wind||'--'],['RH', h.humidity||'--'],['PRESSURE','N/A'],['VIS','N/A'],['CAPE','N/A']].map(([k,v])=>`<div class="chip"><div class="muted">${k}</div><b>${v}</b></div>`).join('');
+      const host = document.getElementById('alerts');
+      if (!S.alerts.length) {
+        host.textContent = !S.gps ? 'VIEW · MURPHYSBORO — AWAITING GPS FOR LIVE AND-GATE' : 'No active NWS alerts at the live fix';
+      } else {
+        host.innerHTML = S.alerts.map(a => {
+          const sev = (a.severity||'Unknown').toLowerCase();
+          return `<div class="alert-card sev-${spEsc(sev)}"><div class="ev">${spEsc(a.event)} · ${spEsc(a.severity||'')}</div><div class="hd">${spEsc(a.headline || '')}</div><div class="muted" style="margin-top:6px">${spEsc(a.area||'')} ${a.expires ? ' · until '+spEsc(a.expires) : ''}</div></div>`;
+        }).join('');
+      }
+      const hoursEl = document.getElementById('hourly');
+      hoursEl.innerHTML = (S.hours||[]).slice(0,8).map(p => `<div class="hour"><span class="muted">${spEsc(p.when)}</span><b>${spEsc(p.temp)}</b><span class="muted">${spEsc(p.wind)}</span></div>`).join('') || '<div class="muted">Hourly NWS loads with the gridpoint.</div>';
+      const ban = document.getElementById('alertBanner');
+      if (S.alerts[0] && S.gps) {
+        ban.innerHTML = `<b>NWS ${spEsc(S.alerts[0].severity||'')}</b>${spEsc(S.alerts[0].event||'')}`;
+        ban.classList.add('show');
+      } else {
+        ban.classList.remove('show');
+        ban.textContent = '';
+      }
+      const under = ban.classList.contains('show');
+      document.querySelector('.zooms').classList.toggle('under-banner', under);
+      document.getElementById('radarKey').classList.toggle('under-banner', under);
+      document.getElementById('radarKey').textContent = S.radarAt
+        ? ('RADAR ' + new Date(S.radarAt*1000).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}) + ' · NEXRAD + GLOBAL')
+        : (S.radarUrl ? 'RADAR · NOAA MOSAIC' : 'RADAR WAIT');
+      const spb = document.getElementById('stormPath');
+      if (spb) {
+        if (S.stormPath) {
+          spb.innerHTML = '<b>STORM PATH</b>Verified detour · +' + S.stormPath.extraMin + ' min · avoids ' + spEsc(S.stormPath.event);
+          spb.classList.add('show');
+        } else if (S.cone && S.cone.risk === 'INTERSECT') {
+          spb.innerHTML = '<b>INTERSECT CONE</b>' + spEsc(S.cone.copy);
+          spb.classList.add('show');
+        } else {
+          spb.classList.remove('show');
+          spb.textContent = '';
+        }
+      }
+      const img = document.getElementById('radarImg');
+      const wait = document.getElementById('radarWait');
+      if (S.radarUrl) {
+        img.src = S.radarUrl;
+        img.style.display = 'block';
+        wait.style.display = S.gps && S.radar ? 'none' : 'flex';
+        wait.textContent = S.gps ? '' : 'VIEW · NOT GPS';
+        wait.style.opacity = '.9';
+      } else {
+        img.style.display = 'none';
+        wait.style.display = 'flex';
+        wait.textContent = 'AWAITING GPS';
+        wait.style.opacity = '1';
+      }
+      document.getElementById('radarCap').textContent = S.radar ? 'LIVE' : (S.radarUrl ? 'VIEW' : 'WAIT');
+      if (S.dest) {
+        const miles = S.route ? `${S.route.miles.toFixed(1)} mi` : 'route wait';
+        const etaLive = S.remainSec != null ? formatDuration(S.remainSec) : (S.route ? formatDuration(S.route.min*60) : '');
+        document.getElementById('nowCard').innerHTML = `<b>↑ ${miles}</b><div>${S.dest.label}</div><div class="muted">${S.gps ? (S.route ? 'LIVE · ' + etaLive : 'GPS LIVE · ROUTING') : (S.route ? 'VIEW ROUTE · ' + etaLive : 'DESTINATION SET · AWAITING GPS')}</div>`;
+        document.getElementById('mapSearchLabel').textContent = S.dest.label;
+      } else {
+        document.getElementById('nowCard').innerHTML = `<b>↑</b> Set a destination to load the route`;
+        document.getElementById('mapSearchLabel').textContent = 'Town, state, or address';
+      }
+      document.getElementById('nextMi').textContent = S.step ? S.step.mi : (S.route ? S.route.miles.toFixed(1)+' mi' : (S.gps ? 'LIVE' : 'VIEW'));
+      document.getElementById('nextIns').textContent = S.step ? S.step.ins : (S.dest ? 'Head toward destination' : 'Set a destination');
+      document.getElementById('nextDst').textContent = S.dest ? S.dest.label : 'SEARCH TO NAVIGATE';
+      const mph = (S.speed!=null && isFinite(S.speed) && S.speed>=0) ? Math.round(S.speed*2.236936) : null;
+      document.getElementById('spd').textContent = (S.gps && mph!=null) ? String(mph) : '--';
+      const gate = document.getElementById('gpsGate');
+      if (gate) gate.hidden = !!S.gps;
+      refreshVehBtn();
+      renderIntelMarkers();
+    }
+    function switchScreen(name) {
+      if (!['driver','map','weather','settings'].includes(name) || S.screen===name) return;
+      S.screen = name;
+      document.querySelectorAll('.screen').forEach(el=>el.classList.toggle('active', el.id==='screen-'+name));
+      document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active', b.dataset.screen===name));
+      document.querySelectorAll('.sheet').forEach(el=>el.classList.remove('open'));
+      if (name==='map') setTimeout(kickMap, 50);
+    }
+    document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>switchScreen(b.dataset.screen));
+    function openSheet(){ document.getElementById('sheet').classList.add('open'); }
+    document.getElementById('btnSearch').onclick = openSheet;
+    document.getElementById('mapSearch').onclick = openSheet;
+    document.getElementById('closeSheet').onclick = ()=>document.getElementById('sheet').classList.remove('open');
+    document.getElementById('zoomIn').onclick = function(){ S.cam.mode='browse'; camShowRecenter(); map.zoomIn(); };
+    document.getElementById('zoomOut').onclick = function(){ S.cam.mode='browse'; camShowRecenter(); map.zoomOut(); };
+    document.getElementById('recenter').onclick = function(){ camFollowZoom(); };
+    document.getElementById('setUnits').onclick = function(){ S.units = S.units==='MPH'?'KMH':'MPH'; this.textContent=S.units; };
+    function findVeh(id) {
+      for (const sec of VEH_SECTIONS) {
+        const it = sec.items.find(x => x.id === id);
+        if (it) return it;
+      }
+      return null;
+    }
+    function refreshVehBtn() {
+      const thumb = document.getElementById('vehThumb');
+      const v = findVeh(lsRead(LS_VEH, null));
+      if (v) { thumb.src = v.url; thumb.hidden = false; }
+      else { thumb.removeAttribute('src'); thumb.hidden = true; }
+    }
+    function vehIcon() {
+      const v = findVeh(lsRead(LS_VEH, null));
+      if (!v) return null;
+      return L.icon({ iconUrl: v.url, iconSize:[42,64], iconAnchor:[21,62], popupAnchor:[0,-56] });
+    }
+    function applyVehMarker() {
+      const ic = vehIcon();
+      if (!marker || !ic) return;
+      if (marker.setIcon) marker.setIcon(ic);
+    }
+    function renderVehSheet() {
+      const host = document.getElementById('vehHost');
+      const back = document.getElementById('vehBack');
+      const cur = lsRead(LS_VEH, null);
+      const pack = S.vehView ? VEH_SECTIONS.find(s => s.id === S.vehView) : null;
+      if (pack) {
+        back.classList.add('show');
+        document.getElementById('vehKicker').textContent = 'YOUR MARKER · ' + pack.label;
+        document.getElementById('vehTitle').textContent = 'Pick one';
+        document.getElementById('vehNote').textContent = 'Tap any of the four. It rides your GPS until you pick another.';
+        host.innerHTML = '<div class="veh-grid">' + pack.items.map(it =>
+          `<button type="button" class="tile${cur===it.id?' selected':''}" data-vehicle="${it.id}"><img src="${it.url}" width="80" height="96" alt=""><span class="t">${it.label}</span><span class="d">${it.desc}</span></button>`
+        ).join('') + '</div>';
+        host.querySelectorAll('[data-vehicle]').forEach(btn => btn.onclick = () => {
+          lsWrite(LS_VEH, btn.getAttribute('data-vehicle'));
+          applyVehMarker();
+          refreshVehBtn();
+          renderVehSheet();
+          toast('MARKER SET · ' + (findVeh(btn.getAttribute('data-vehicle'))||{}).label);
+        });
+        return;
+      }
+      back.classList.remove('show');
+      document.getElementById('vehKicker').textContent = 'YOUR MARKER';
+      document.getElementById('vehTitle').textContent = 'Choose a form';
+      document.getElementById('vehNote').textContent = 'Tap a pack — its four markers pop up. Tap one and it stays on your GPS path.';
+      host.innerHTML = '<div class="veh-grid">' + VEH_SECTIONS.map(sec => {
+        const thumbs = sec.items.map(it => `<img src="${it.url}" alt="">`).join('');
+        return `<button type="button" class="tile" data-pack="${sec.id}"><div style="display:flex;gap:4px;height:44px;align-items:flex-end;overflow:hidden">${thumbs}</div><span class="t">${sec.label}</span><span class="d">${sec.desc} · 4 markers</span></button>`;
+      }).join('') + '</div>';
+      host.querySelectorAll('[data-pack]').forEach(btn => btn.onclick = () => { S.vehView = btn.getAttribute('data-pack'); renderVehSheet(); });
+    }
+    function pruneIntel(list) {
+      const now = Date.now();
+      return (list||[]).filter(i => i && (now - i.ts) < INTEL_TTL);
+    }
+    function renderIntelMarkers() {
+      intelLayer.clearLayers();
+      pruneIntel(lsRead(LS_INTEL, [])).forEach(i => {
+        const spec = INTEL_TYPES[i.type] || {};
+        const icon = spec.photo ? L.icon({ iconUrl: spec.photo, iconSize:[48,48], iconAnchor:[24,46] }) : undefined;
+        const mk = L.marker([i.lat, i.lon], icon ? { icon, title: i.label } : { title: i.label });
+        const pop = document.createElement('div');
+        const lab = document.createElement('div'); lab.textContent = i.label;
+        pop.appendChild(lab);
+        if (i.note) { const n = document.createElement('div'); n.style.marginTop='6px'; n.style.color='#9ad'; n.textContent = i.note; pop.appendChild(n); }
+        const del = document.createElement('button');
+        del.textContent = 'DELETE'; del.style.marginTop='8px';
+        del.onclick = () => {
+          lsWrite(LS_INTEL, pruneIntel(lsRead(LS_INTEL,[])).filter(x => x.id !== i.id));
+          renderIntelMarkers();
+          toast('INTEL DELETED');
+        };
+        pop.appendChild(del);
+        mk.bindPopup(pop);
+        mk.addTo(intelLayer);
+      });
+    }
+    function openIntel() {
+      S.intelPick = { type:null, subtype:null };
+      document.getElementById('intelNote').value = '';
+      document.getElementById('postIntel').hidden = true;
+      document.getElementById('intelSubs').innerHTML = '';
+      const grid = document.getElementById('intelGrid');
+      grid.innerHTML = Object.keys(INTEL_TYPES).map(k => {
+        const t = INTEL_TYPES[k];
+        return `<button type="button" class="tile" data-type="${k}"><img src="${t.photo}" width="80" height="56" alt=""><span class="t">${t.label}</span><span class="d">${t.desc}</span></button>`;
+      }).join('');
+      grid.querySelectorAll('[data-type]').forEach(btn => btn.onclick = () => pickIntel(btn.getAttribute('data-type')));
+      document.getElementById('intelSheet').classList.add('open');
+    }
+    function pickIntel(type) {
+      S.intelPick = { type, subtype:null };
+      document.querySelectorAll('#intelGrid .tile').forEach(t => t.classList.toggle('selected', t.getAttribute('data-type')===type));
+      const spec = INTEL_TYPES[type];
+      const row = document.getElementById('intelSubs');
+      const post = document.getElementById('postIntel');
+      if (spec.subtypes.length) {
+        row.innerHTML = spec.subtypes.map(s => `<button type="button" class="chip-btn" data-sub="${s.id}">${s.label}</button>`).join('');
+        row.querySelectorAll('.chip-btn').forEach(b => b.onclick = () => {
+          row.querySelectorAll('.chip-btn').forEach(c => c.classList.remove('active'));
+          b.classList.add('active');
+          S.intelPick.subtype = b.getAttribute('data-sub');
+          post.hidden = false;
+        });
+        post.hidden = true;
+      } else {
+        row.innerHTML = '';
+        post.hidden = false;
+      }
+    }
+    function postIntel() {
+      if (!S.intelPick || !S.intelPick.type) return;
+      const spec = INTEL_TYPES[S.intelPick.type];
+      let lat, lon, source;
+      if (S.gps && S.coords) { lat = S.coords.lat; lon = S.coords.lon; source = 'gps'; }
+      else { const c = map.getCenter(); lat = c.lat; lon = c.lng; source = 'map'; }
+      const item = {
+        id: 'i'+Date.now(),
+        type: S.intelPick.type,
+        subtype: S.intelPick.subtype,
+        label: spec.label + (S.intelPick.subtype ? ' · ' + S.intelPick.subtype.replace(/_/g,' ').toUpperCase() : ''),
+        note: (document.getElementById('intelNote').value||'').trim().slice(0,140),
+        color: spec.color,
+        lat, lon, source, ts: Date.now()
+      };
+      const all = pruneIntel(lsRead(LS_INTEL, []));
+      all.unshift(item);
+      lsWrite(LS_INTEL, all.slice(0,40));
+      renderIntelMarkers();
+      document.getElementById('intelSheet').classList.remove('open');
+      toast('INTEL POSTED · ' + item.label);
+      switchScreen('map');
+    }
+    document.getElementById('btnMarker').onclick = () => { S.vehView = null; renderVehSheet(); document.getElementById('vehSheet').classList.add('open'); };
+    document.getElementById('btnReport').onclick = openIntel;
+    document.getElementById('closeVeh').onclick = () => document.getElementById('vehSheet').classList.remove('open');
+    document.getElementById('closeIntel').onclick = () => document.getElementById('intelSheet').classList.remove('open');
+    document.getElementById('vehBack').onclick = () => { S.vehView = null; renderVehSheet(); };
+    document.getElementById('postIntel').onclick = postIntel;
+    document.getElementById('clearIntel').onclick = () => { lsWrite(LS_INTEL, []); renderIntelMarkers(); toast('INTEL CLEARED'); };
+    let qTimer, spHits = [], spPending = null;
+    function formatPhoton(f) {
+      const p = (f && f.properties) || {};
+      const name = p.name || '';
+      const city = p.city || p.locality || '';
+      const state = p.state || '';
+      const street = [p.housenumber, p.street].filter(Boolean).join(' ');
+      const label = name && city && state && name !== city
+        ? name + ', ' + city + ', ' + state
+        : name && state ? name + ', ' + state : (name || street || 'Place');
+      const sub = [street && name ? street : '', city, state].filter(Boolean).join(', ');
+      return { label, sub, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] };
+    }
+    function uniquePlaces(list) {
+      const out = [];
+      list.forEach((p) => {
+        const idx = out.findIndex((q) => Math.abs(q.lat - p.lat) < 0.0015 && Math.abs(q.lon - p.lon) < 0.0015);
+        const pStreet = /\d/.test((p.label||'') + (p.sub||''));
+        if (idx >= 0) {
+          const qStreet = /\d/.test((out[idx].label||'') + (out[idx].sub||''));
+          if (pStreet && !qStreet) out[idx] = p;
+          return;
+        }
+        out.push(p);
+      });
+      return out;
+    }
+    function setPending(place) {
+      spPending = place;
+      document.getElementById('pendingBox').hidden = !place;
+      document.getElementById('pendingLabel').textContent = place ? place.label : '';
+      document.getElementById('pendingSub').textContent = place ? (place.sub || (place.lat.toFixed(4)+', '+place.lon.toFixed(4))) : '';
+      document.querySelectorAll('#hits .hit').forEach((el, i) => {
+        el.classList.toggle('active', !!(place && spHits[i] && spHits[i].lat === place.lat && spHits[i].lon === place.lon));
+      });
+    }
+    document.getElementById('hits').addEventListener('click', (e) => {
+      const el = e.target.closest('.hit');
+      if (!el) return;
+      const place = spHits[+el.dataset.i];
+      if (place) setPending(place);
+    });
+    document.getElementById('goDrive').onclick = () => { if (spPending) startDrive(spPending); };
+    function fromCensus(body) {
+      const matches = body && body.result && body.result.addressMatches || [];
+      return matches.map(function(row){
+        const c = row.coordinates || {};
+        return { label: row.matchedAddress || 'US address', sub: 'CENSUS MAF', lat: c.y, lon: c.x, rank: 0 };
+      }).filter(function(p){ return isFinite(p.lat) && isFinite(p.lon); });
+    }
+    function fromArcgis(body) {
+      return ((body && body.candidates) || []).map(function(row){
+        const loc = row.location || {};
+        const attr = row.attributes || {};
+        const kind = attr.Addr_type || '';
+        const place = attr.PlaceName || '';
+        const city = attr.City || '';
+        const region = attr.Region || '';
+        const regionShort = region === 'Illinois' ? 'IL' : region;
+        const postal = attr.Postal || '';
+        const street = attr.StAddr || '';
+        const placeAddr = attr.Place_addr || '';
+        const longLabel = attr.LongLabel || '';
+        const match = attr.Match_addr || row.address || '';
+        let label = match || place || 'US place';
+        let sub = [city, regionShort].filter(Boolean).join(', ');
+        if (kind === 'POI' && place) {
+          label = place;
+          sub = street
+            ? street + ', ' + city + (regionShort ? ', ' + regionShort : '') + (postal ? ' ' + postal : '')
+            : (placeAddr || longLabel || sub);
+        } else if (longLabel) {
+          label = longLabel.replace(/, USA$/, '');
+          sub = [city, regionShort, postal].filter(Boolean).join(' ');
+        }
+        const rank = (kind === 'PointAddress' || kind === 'StreetAddress') ? 0 : (kind === 'POI' ? 1 : 2);
+        return { label: label, sub: sub, lat: loc.y, lon: loc.x, rank: rank, score: row.score };
+      }).filter(function(p){ return isFinite(p.lat) && isFinite(p.lon) && (p.score == null || p.score >= 70); });
+    }
+    function fromNominatimHits(body) {
+      if (!Array.isArray(body)) return [];
+      return body.map(function(row){
+        const addr = row.address || {};
+        const street = [addr.house_number, addr.road].filter(Boolean).join(' ');
+        const city = addr.city || addr.town || addr.village || '';
+        const label = (row.display_name || '').split(',').slice(0, 3).join(',').trim() || street || 'Place';
+        return { label: label, sub: street || city, lat: parseFloat(row.lat), lon: parseFloat(row.lon), rank: street ? 0 : 2 };
+      }).filter(function(p){ return isFinite(p.lat) && isFinite(p.lon); });
+    }
+    async function searchUS(q, bias) {
+      if (!bias || !isFinite(bias.lat) || !isFinite(bias.lon)) bias = S.view || { lat: 37.7645, lon: -89.3351 };
+      const enc = encodeURIComponent(q);
+      const loc = bias.lon + ',' + bias.lat;
+      const far = /\d/.test(q) || /,/.test(q) || /\b[A-Z]{2}\b/.test(q) || /\b(california|texas|florida|alaska|hawaii|new york)\b/i.test(q);
+      const dist = far ? '' : '&distance=150000';
+      const arc = 'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?f=json&countryCode=USA&maxLocations=10&outFields=Addr_type,Match_addr,LongLabel,PlaceName,StAddr,Place_addr,City,Region,Postal&location=' + loc + dist + '&SingleLine=' + enc;
+      const nom = 'https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=us&dedupe=1&limit=8&q=' + enc;
+      const pho = 'https://photon.komoot.io/api/?q=' + enc + '&lat=' + bias.lat + '&lon=' + bias.lon + '&limit=10&lang=en';
+      const [a, n, p] = await Promise.all([
+        fetchJson(arc, 7000),
+        fetchJson(nom, 7000),
+        fetchJson(pho, 7000)
+      ]);
+      const photonHits = ((p && p.features) || []).filter(function(f){ return f && f.geometry && f.geometry.coordinates; }).map(formatPhoton).map(function(h){ h.rank = /\d/.test(h.label) ? 0 : 2; return h; });
+      const merged = uniquePlaces([].concat(fromArcgis(a), fromNominatimHits(n), photonHits));
+      merged.forEach(function(h){
+        h._m = metersBetween(bias, { lat: h.lat, lon: h.lon });
+      });
+      merged.sort(function(x,y){ return (x._m||0) - (y._m||0); });
+      const hits = merged.slice(0, 8);
+      if (hits.length) {
+        const path = [bias.lon + ',' + bias.lat].concat(hits.map(function(h){ return h.lon + ',' + h.lat; })).join(';');
+        const dests = hits.map(function(_,i){ return i+1; }).join(';');
+        const table = await fetchJson('https://router.project-osrm.org/table/v1/driving/' + path + '?sources=0&destinations=' + dests + '&annotations=duration,distance', 8000);
+        const durs = table && table.durations && table.durations[0];
+        const dists = table && table.distances && table.distances[0];
+        hits.forEach(function(h, i){
+          if (durs && isFinite(durs[i])) h.etaSec = durs[i];
+          if (dists && isFinite(dists[i])) h._m = dists[i];
+        });
+      }
+      hits.forEach(function(h){
+        const miles = (h._m||0) / 1609.34;
+        const distLabel = miles < 0.1 ? Math.round((h._m||0) * 3.28084) + ' ft' : ((miles < 10 ? miles.toFixed(1) : Math.round(miles)) + ' mi');
+        const eta = formatDuration(h.etaSec);
+        const base = h.sub || '';
+        h.sub = [base, distLabel, eta].filter(Boolean).join(' · ');
+      });
+      return hits;
+    }
+    document.getElementById('q').addEventListener('input', (e)=>{
+      clearTimeout(qTimer);
+      qTimer = setTimeout(async ()=>{
+        const q = e.target.value.trim();
+        if (q.length<2) { document.getElementById('hits').innerHTML=''; spHits=[]; setPending(null); return; }
+        document.getElementById('hits').innerHTML = '<div class="muted" style="padding:10px 0">SEARCHING US ADDRESSES</div>';
+        const bias = S.coords || S.view || { lat: 37.7645, lon: -89.3351 };
+        try {
+          spHits = await searchUS(q, bias);
+        } catch (err) {
+          document.getElementById('hits').innerHTML = '<div class="muted" style="padding:10px 0">SEARCH FAILED — try again</div>';
+          setPending(null);
+          return;
+        }
+        if (!spHits.length) {
+          document.getElementById('hits').innerHTML = '<div class="muted" style="padding:10px 0">NO MATCH — try 123 Main St, City, ST</div>';
+          setPending(null);
+          return;
+        }
+        document.getElementById('hits').innerHTML = spHits.map((h,i)=>`<div class="hit" data-i="${i}"><b>${spEsc(h.label)}</b><div class="muted">${spEsc(h.sub || h.lat.toFixed(4)+', '+h.lon.toFixed(4))}</div></div>`).join('');
+        setPending(spHits[0] || null);
+      }, 280);
+    });
+    async function startDrive(place) {
+      if (!place || !isFinite(place.lat) || !isFinite(place.lon)) return;
+      S.dest = place;
+      document.getElementById('sheet').classList.remove('open');
+      await fetchRoute(place, true);
+      toast(S.stormPath ? ('STORM PATH · +' + S.stormPath.extraMin + ' MIN · AVOIDS ' + S.stormPath.event) : ('DRIVE TO '+place.label.toUpperCase()));
+      speak(S.stormPath ? ('Storm path reroute, plus ' + S.stormPath.extraMin + ' minutes.') : ('Route set. ' + (S.route ? Math.round(S.route.miles) + ' miles.' : '')));
+      paint();
+      setTimeout(kickMap, 80);
+    }
+    async function fetchRoute(place, moveCamera) {
+      if (destMark) destMark.remove();
+      destMark = L.circleMarker([place.lat, place.lon], { radius:7, color:'#FFAB00', fillColor:'#FFAB00', fillOpacity:.9 }).addTo(map);
+      const from = S.coords || S.view;
+      const base = `https://router.project-osrm.org/route/v1/driving/${from.lon},${from.lat};${place.lon},${place.lat}?overview=full&geometries=geojson&steps=true&alternatives=true`;
+      let body = await fetchJson(base, 12000);
+      S._routeAt = Date.now();
+      S._routeFrom = { lat: from.lat, lon: from.lon };
+      if (!(body && body.routes && body.routes[0])) {
+        if (moveCamera) camProg(function(){ map.setView([place.lat, place.lon], 13, { animate:true }); });
+        return;
+      }
+      const geoms = (S.alertGeoms || []).map(function(g){ return g.geom; });
+      function coordsOf(r) {
+        const c = (r.geometry && r.geometry.coordinates) || [];
+        return c.map(function(p){ return { lat: p[1], lon: p[0] }; });
+      }
+      function hitsOf(r) {
+        const coords = coordsOf(r);
+        if (!geoms.length || !coords.length) return 0;
+        const step = Math.max(1, Math.floor(coords.length / 40));
+        let n = 0;
+        for (let i = 0; i < coords.length; i += step) {
+          const p = coords[i];
+          for (let g = 0; g < geoms.length; g++) {
+            if (geomHits(geoms[g], p.lat, p.lon)) { n++; break; }
+          }
+        }
+        return n;
+      }
+      let chosen = body.routes[0];
+      let chosenHits = hitsOf(chosen);
+      S.stormPath = null;
+      if (chosenHits > 0) {
+        let best = chosen, bestHits = chosenHits;
+        for (let i = 1; i < body.routes.length; i++) {
+          const h = hitsOf(body.routes[i]);
+          if (h < bestHits && body.routes[i].duration <= chosen.duration * 1.6) {
+            best = body.routes[i]; bestHits = h;
+          }
+        }
+        if (bestHits >= chosenHits) {
+          const via = stormVia(from, place);
+          if (via) {
+            const viaUrl = `https://router.project-osrm.org/route/v1/driving/${from.lon},${from.lat};${via.lon},${via.lat};${place.lon},${place.lat}?overview=full&geometries=geojson&steps=true`;
+            const viaBody = await fetchJson(viaUrl, 12000);
+            if (viaBody && viaBody.routes && viaBody.routes[0] && hitsOf(viaBody.routes[0]) < chosenHits && viaBody.routes[0].duration <= chosen.duration * 1.6) {
+              best = viaBody.routes[0]; bestHits = hitsOf(best);
+            }
+          }
+        }
+        if (best !== chosen && bestHits < chosenHits) {
+          const extra = Math.max(0, Math.round((best.duration - chosen.duration) / 60));
+          const ev = (S.alertGeoms[0] && S.alertGeoms[0].event) || 'severe weather';
+          S.stormPath = { extraMin: extra, event: ev, hits: bestHits };
+          chosen = best;
+        }
+      }
+      const r = chosen;
+      S.route = { miles: r.distance/1609.34, min: r.duration/60 };
+      S.remainSec = Math.round(r.duration);
+      const steps = [];
+      (r.legs || []).forEach(function(leg){ (leg.steps || []).forEach(function(s){ steps.push(s); }); });
+      const step = steps.find((s) => s.distance > 40) || steps[0];
+      S.step = step ? { mi: (step.distance/1609.34).toFixed(1)+' mi', ins: (step.maneuver && step.maneuver.instruction) || 'Continue' } : null;
+      if (line) line.remove();
+      line = L.geoJSON(r.geometry, { style:{ color: S.stormPath ? '#00E5FF' : '#FFAB00', weight:4 } }).addTo(map);
+      S._routeCoords = (r.geometry && r.geometry.coordinates) || [];
+      computeCone();
+      if (S.step && S.step.ins && S.step.ins !== S.lastSpoken) {
+        speak(S.step.ins);
+        S.lastSpoken = S.step.ins;
+      }
+      if (moveCamera) camOverview();
+      paintEta();
+    }
+    function camMeters(a, b) {
+      if (!a || !b || !isFinite(a.lat) || !isFinite(a.lon) || !isFinite(b.lat) || !isFinite(b.lon)) return 0;
+      const R = 6371000, toR = function(d){ return d*Math.PI/180; };
+      const dLat = toR(b.lat-a.lat), dLon = toR(b.lon-a.lon);
+      const s = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(toR(a.lat))*Math.cos(toR(b.lat))*Math.sin(dLon/2)*Math.sin(dLon/2);
+      return 2*R*Math.asin(Math.min(1, Math.sqrt(s)));
+    }
+    function metersBetween(a, b) { return camMeters(a, b); }
+    function formatDuration(sec) {
+      if (sec == null || !isFinite(sec) || sec < 0) return '';
+      sec = Math.round(sec);
+      const d = Math.floor(sec/86400), h = Math.floor((sec%86400)/3600), m = Math.floor((sec%3600)/60), s = sec%60;
+      if (d) return d+'d '+h+'h '+m+'m';
+      if (h) return h+'h '+m+'m '+s+'s';
+      if (m) return m+' min '+s+'s';
+      return s+'s';
+    }
+    function paintEta() {
+      const sec = Math.max(0, Math.round(S.remainSec || 0));
+      const cells = [Math.floor(sec/86400), Math.floor((sec%86400)/3600), Math.floor((sec%3600)/60), sec%60];
+      document.getElementById('eta').innerHTML = ['DAYS','HOURS','MIN','SEC'].map((l,i)=>`<div class="cell"><b>${cells[i]}</b><span>${l}</span></div>`).join('');
+    }
+    function fetchJson(url, ms) {
+      const c = new AbortController();
+      const t = setTimeout(function(){ c.abort(); }, ms || 7000);
+      return fetch(url, { signal: c.signal }).then(function(r){ return r.json(); }).catch(function(){ return null; }).finally(function(){ clearTimeout(t); });
+    }
+    function pointInRing(lat, lon, ring) {
+      if (!ring || ring.length < 3) return false;
+      let inside = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+        const hit = ((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / ((yj - yi) || 1e-12) + xi);
+        if (hit) inside = !inside;
+      }
+      return inside;
+    }
+    function geomHits(geom, lat, lon) {
+      if (!geom || !geom.coordinates) return false;
+      function walk(coords) {
+        if (!coords || !coords.length) return false;
+        if (typeof coords[0][0] === 'number') return pointInRing(lat, lon, coords);
+        return coords.some(walk);
+      }
+      return walk(geom.coordinates);
+    }
+    function stormVia(from, to) {
+      const g = (S.alertGeoms || [])[0];
+      if (!g || !g.geom) return null;
+      let slat = 0, slon = 0, n = 0;
+      function acc(coords) {
+        if (!coords || !coords.length) return;
+        if (typeof coords[0] === 'number') { slon += coords[0]; slat += coords[1]; n++; return; }
+        coords.forEach(acc);
+      }
+      acc(g.geom.coordinates);
+      if (!n) return null;
+      slat /= n; slon /= n;
+      const midLat = (from.lat + to.lat) / 2, midLon = (from.lon + to.lon) / 2;
+      let dLat = midLat - slat, dLon = midLon - slon;
+      const hyp = Math.hypot(dLat, dLon) || 1;
+      const deg = 20 / 111;
+      return { lat: midLat + dLat / hyp * deg, lon: midLon + dLon / hyp * deg };
+    }
+    function nwsHeaders() { return { Accept:'application/geo+json', 'User-Agent': UA }; }
+    async function loadAtmosphere(lat, lon, live) {
+      const point = lat.toFixed(4)+','+lon.toFixed(4);
+      try {
+        const pts = await fetch('https://api.weather.gov/points/'+point, { headers: nwsHeaders() }).then(r=>r.json());
+        const p = pts.properties;
+        const hourlyUrl = `https://api.weather.gov/gridpoints/${p.gridId}/${p.gridX},${p.gridY}/forecast/hourly`;
+        const alertsUrl = `https://api.weather.gov/alerts/active?point=${point}`;
+        const [h, a] = await Promise.all([
+          fetch(hourlyUrl,{headers:nwsHeaders()}).then(r=>r.json()),
+          fetch(alertsUrl,{headers:nwsHeaders()}).then(r=>r.json())
+        ]);
+        const per = h.properties.periods[0];
+        S.hourly = { temperature: per.temperature+'°'+per.temperatureUnit, wind: (per.windDirection||'')+' '+(per.windSpeed||''), humidity: (per.relativeHumidity&&per.relativeHumidity.value!=null)? per.relativeHumidity.value+'%':'N/A' };
+        S.hours = (h.properties.periods||[]).slice(0,8).map(p => ({
+          when: new Date(p.startTime).toLocaleTimeString([], { hour:'numeric' }),
+          temp: p.temperature+'°',
+          wind: p.windSpeed || ''
+        }));
+        S.alerts = (a.features||[]).map(f => {
+          const pr = f.properties || {};
+          let expires = '';
+          try { if (pr.expires) expires = new Date(pr.expires).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }); } catch (e) {}
+          return { event: pr.event, severity: pr.severity, urgency: pr.urgency, headline: pr.headline, area: pr.areaDesc, expires };
+        });
+        S.alertGeoms = (a.features||[]).filter(function(f){
+          const ev = (f.properties && f.properties.event) || '';
+          return /tornado|thunderstorm|flash flood|blizzard|winter storm|hurricane|cyclone|ice storm|dust storm/i.test(ev);
+        }).map(function(f){ return { event: f.properties.event, geom: f.geometry }; });
+        S.last = live ? evaluate(S.alerts) : S.last;
+        S.wx = !!live;
+      } catch (e) { if (live) S.wx = false; }
+      const half = 1.2;
+      const radar = `https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qcd/ows?service=WMS&version=1.1.1&request=GetMap&layers=conus_bref_qcd&format=image/png&transparent=true&srs=CRS:84&bbox=${lon-half},${lat-half},${lon+half},${lat+half}&width=512&height=512`;
+      S.radarUrl = radar;
+      await loadRadarTiles();
+      S.radar = !!live && !!S.radarAt;
+      paint();
+      loadOfficialSources();
+    }
+    async function loadRadarTiles() {
+      try {
+        const maps = await fetch('https://api.rainviewer.com/public/weather-maps.json').then(r=>r.json());
+        const past = (maps && maps.radar && maps.radar.past) || [];
+        const last = past[past.length-1];
+        if (!last || !last.path) throw new Error('no radar frame');
+        const host = (maps.host || 'https://tilecache.rainviewer.com').replace(/\/$/,'');
+        const url = host + last.path + '/256/{z}/{x}/{y}/2/1_1.png';
+        if (radarTiles) map.removeLayer(radarTiles);
+        radarTiles = L.tileLayer(url, {
+          opacity: 0.65, minZoom: 1, maxZoom: 19, maxNativeZoom: 7,
+          className: 'sp-radar-tiles', attribution: 'RainViewer / NOAA NEXRAD'
+        });
+        radarTiles.addTo(map);
+        S.radarAt = last.time;
+        S.radarTiles = url;
+        return;
+      } catch (e) {
+        if (radarTiles) map.removeLayer(radarTiles);
+        radarTiles = L.tileLayer.wms('https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qcd/ows', {
+          layers: 'conus_bref_qcd', format: 'image/png', transparent: true, opacity: 0.6, version: '1.1.1',
+          className: 'sp-radar-tiles', attribution: 'NOAA NWS'
+        });
+        radarTiles.addTo(map);
+        S.radarAt = Math.floor(Date.now()/1000);
+        S.radarTiles = 'ncep-wms';
+      }
+    }
+    async function onFix(lat, lon, speed) {
+      const first = !S.gps;
+      S.gps = true; S.coords = { lat, lon };
+      if (speed!=null && isFinite(speed)) S.speed = speed;
+      if (!marker) {
+        const ic = vehIcon();
+        marker = ic
+          ? L.marker([lat,lon], { icon: ic }).addTo(map)
+          : L.circleMarker([lat,lon], { radius:8, color:'#00E5FF', fillColor:'#00E5FF', fillOpacity:.95 }).addTo(map);
+      } else {
+        marker.setLatLng([lat,lon]);
+        applyVehMarker();
+      }
+      camFollowPan();
+      if (first) {
+        S.cam.mode = 'follow';
+        camShowRecenter();
+        await loadAtmosphere(lat, lon, true);
+      } else if (!S._wxAt || Date.now() - S._wxAt > 5*60*1000) {
+        S._wxAt = Date.now();
+        loadAtmosphere(lat, lon, true);
+      }
+      if (S.dest) {
+        const moved = camMeters(S._routeFrom, S.coords);
+        const stale = !S._routeAt || Date.now() - S._routeAt > 30000;
+        if (moved >= 250 || stale) await fetchRoute(S.dest, false);
+      }
+      paint();
+    }
+    function applyView(lat, lon, why) {
+      if (S.gps) return;
+      if (!isFinite(lat) || !isFinite(lon)) return;
+      S.view = { lat, lon, why: why || 'view' };
+      map.setView([lat, lon], 13);
+      loadAtmosphere(lat, lon, false);
+    }
+    function requestGps() {
+      if (!navigator.geolocation) { toast('GPS UNAVAILABLE'); return; }
+      navigator.geolocation.getCurrentPosition(
+        p => {
+          onFix(p.coords.latitude, p.coords.longitude, p.coords.speed);
+          if (watchId==null) {
+            watchId = navigator.geolocation.watchPosition(w=>{
+              if (!S.gps) return;
+              onFix(w.coords.latitude, w.coords.longitude, w.coords.speed);
+            }, ()=>{}, { enableHighAccuracy:true, maximumAge:5000 });
+          }
+        },
+        () => toast('GPS DENIED — VIEW HELD'),
+        { enableHighAccuracy:true, timeout:12000 }
+      );
+    }
+    function tryNetwork() {
+      fetch('https://get.geojs.io/v1/ip/geo.json').then(r=>r.json()).then((g)=>{
+        const lat = parseFloat(g.latitude), lon = parseFloat(g.longitude);
+        if (isFinite(lat) && isFinite(lon)) applyView(lat, lon, 'network');
+      }).catch(()=>{});
+    }
+    document.getElementById('gpsGate').onclick = requestGps;
+    document.getElementById('btnGps').onclick = requestGps;
+    document.getElementById('srcChips').addEventListener('click', function(e){
+      const b = e.target.closest('[data-src]');
+      if (b) openSrcRail(b.getAttribute('data-src'));
+    });
+    document.getElementById('srcRailClose').onclick = function(){ document.getElementById('srcRail').classList.remove('open'); };
+    document.getElementById('srcNav').addEventListener('click', function(e){
+      const b = e.target.closest('[data-src]');
+      if (b) openSrcRail(b.getAttribute('data-src'));
+    });
+    document.getElementById('srcBody').addEventListener('click', function(e){
+      const b = e.target.closest('[data-del]');
+      if (b) dismissReport(b.getAttribute('data-del'));
+    });
+    document.getElementById('btnSearch').addEventListener('click', function(){ if(!S.gps) tryNetwork(); });
+    setInterval(()=>{
+      document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+      if (S.dest && S.remainSec != null && S.remainSec > 0 && S.gps && S.speed != null && S.speed > 0.5) {
+        S.remainSec -= 1;
+        paintEta();
+      }
+    }, 1000);
+    window.addEventListener('resize', kickMap);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', kickMap);
+    document.getElementById('btnVoice').onclick = function(){ setVoice(!S.voice, true); };
+    document.getElementById('btnVoice2').onclick = function(){ setVoice(!S.voice, true); };
+    setVoice(S.voice);
+    document.addEventListener('visibilitychange', function(){ S.hidden = document.hidden; if (!S.hidden) paint(); });
+    paint();
+    applyView(VIEW.lat, VIEW.lon, 'murphysboro');
+    loadRadarTiles();
+    setInterval(function(){ if (!S.hidden) loadRadarTiles(); }, 10*60*1000);
+    loadOfficialSources();
+    renderIntelMarkers();
+    refreshVehBtn();
+    setTimeout(kickMap, 200);
+    requestGps();
+  </script>
+<script src="telemetry.js?v=20260909w"></script>
+</body>
+</html>
