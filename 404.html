@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="STORMPATH" />
   <meta name="description" content="Storm Path Web 1.4.0 — live GPS, NWS, NOAA radar, Intersect Cone, and on-device voice nav. Device GPS is the only LIVE NWS/NOAA trigger." />
   <title>Storm Path Web 1.4.0</title>
-  <!-- web HUD = 1.4.0 voice + intersect cone 20260910a -->
+  <!-- web HUD = 1.4.0 voice media-volume 20260910v -->
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
   <style>
@@ -198,6 +198,8 @@
     .row b { display:block; }
     .row span { color:var(--muted); font-size:12px; }
     .toggle { border:1px solid var(--cyan); background:transparent; color:var(--cyan); min-width:64px; min-height:36px; font-weight:800; }
+    .toggle.on { background:var(--green); color:#041016; border-color:var(--green); }
+    #btnVoice2 { min-height:48px; min-width:88px; }
     .dock-btn { position:relative; }
     .dock-btn img { width:22px; height:22px; object-fit:contain; display:block; margin:0 auto 2px; }
     .leaflet-control-attribution { display:none !important; }
@@ -298,7 +300,6 @@
           <div class="cell"><b>0</b><span>SEC</span></div>
         </div>
         <div class="card" id="nowCard"><b>↑</b> Set a destination to load the route</div>
-        <button class="btn ghost" id="btnVoice" type="button">VOICE: OFF</button>
         <div class="card cone-card" id="coneCard">
           <div class="kicker">INTERSECT CONE</div>
           <div id="coneCopy">Awaiting GPS + route + radar samples.</div>
@@ -356,7 +357,7 @@
         <div class="card"><b>AND-GATE</b><p class="muted" id="andGate">GPS=false WX=false RADAR=false</p></div>
         <div class="row"><div><b>Speed units</b><span>Live GPS speed from this device</span></div><button class="toggle" id="setUnits">MPH</button></div>
         <div class="row"><div><b>Map tiles</b><span>OpenStreetMap dark basemap</span></div><button class="toggle" type="button">OSM</button></div>
-        <div class="row"><div><b>Voice nav</b><span>Web Speech API · zero cost · client only · turn-by-turn</span></div><button class="toggle" id="btnVoice2" type="button">OFF</button></div>
+        <div class="row"><div><b>Voice nav</b><span>Turn-by-turn at full phone volume. Use the iPhone volume buttons to go louder or quieter — nothing in the HUD caps it.</span></div><button class="toggle" id="btnVoice2" type="button">OFF</button></div>
         <div class="row"><div><b>Storm Path Web 1.4.0</b><span>Live device GPS, National Weather Service, NOAA radar, OpenStreetMap, OSRM, Intersect Cone, voice. First finite GPS fix is the only NWS / NOAA WMS trigger that can leave SAFE MODE. AND-GATE requires GPS ∧ NWS ∧ radar. IP location is never GPS.</span></div></div>
         <div class="row"><div><b>Driver intel</b><span>Remove pins stored on this device</span></div><button class="toggle" id="clearIntel" type="button">CLEAR</button></div>
         <p><a href="privacy.html" style="color:var(--cyan)">Privacy policy</a></p>
@@ -628,26 +629,81 @@
     map.on('zoomstart', camUserGesture);
     map.on('dragstart', camUserGesture);
 
+    const SP_SILENT = 'data:audio/wav;base64,UklGRmQGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YUAGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+    let spMediaEl = null, spMediaCtx = null, spSpeakTimer = 0;
+    function armMediaVolume() {
+      try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+      try {
+        if (!spMediaEl) {
+          spMediaEl = new Audio(SP_SILENT);
+          spMediaEl.loop = true;
+          spMediaEl.volume = 1;
+          spMediaEl.preload = 'auto';
+          spMediaEl.setAttribute('playsinline', '');
+          spMediaEl.setAttribute('webkit-playsinline', '');
+        }
+        const p = spMediaEl.play();
+        if (p && p.catch) p.catch(function(){});
+      } catch (e) {}
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) {
+          if (!spMediaCtx) spMediaCtx = new AC();
+          if (spMediaCtx.state === 'suspended') spMediaCtx.resume();
+        }
+      } catch (e) {}
+    }
+    function disarmMediaVolume() {
+      try { if (spMediaEl) spMediaEl.pause(); } catch (e) {}
+      try { if (spMediaCtx && spMediaCtx.state !== 'closed') spMediaCtx.suspend(); } catch (e) {}
+      try { if (navigator.audioSession) navigator.audioSession.type = 'auto'; } catch (e) {}
+    }
+    function pickVoice() {
+      const voices = (window.speechSynthesis && window.speechSynthesis.getVoices()) || [];
+      const us = voices.filter(function(v){ return /en-US/i.test(v.lang || ''); });
+      return us.find(function(v){ return /samantha|nicky|aaron|enhanced|premium|siri|compact/i.test(v.name || ''); }) || us[0] || voices[0] || null;
+    }
+    function fireUtterance(text) {
+      const synth = window.speechSynthesis;
+      try { synth.resume(); } catch (e) {}
+      const u = new SpeechSynthesisUtterance(String(text));
+      u.volume = 1;
+      u.rate = 1;
+      u.pitch = 1;
+      u.lang = 'en-US';
+      const v = pickVoice();
+      if (v) u.voice = v;
+      synth.speak(u);
+    }
     function speak(text, force) {
       if (!S.voice && !force) return;
       if (typeof window === 'undefined' || !window.speechSynthesis || !text) return;
       try {
-        window.speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(String(text));
-        u.rate = 1.05; u.pitch = 1; u.lang = 'en-US';
-        window.speechSynthesis.speak(u);
+        armMediaVolume();
+        const synth = window.speechSynthesis;
+        if (spSpeakTimer) { clearTimeout(spSpeakTimer); spSpeakTimer = 0; }
+        if (synth.speaking || synth.pending) {
+          synth.cancel();
+          spSpeakTimer = setTimeout(function(){ spSpeakTimer = 0; fireUtterance(text); }, 60);
+        } else {
+          fireUtterance(text);
+        }
       } catch (e) {}
     }
     function setVoice(on, announce) {
       S.voice = !!on;
       lsWrite(LS_VOICE, S.voice);
-      const a = document.getElementById('btnVoice');
       const b = document.getElementById('btnVoice2');
       const badge = document.getElementById('voiceBadge');
-      if (a) { a.textContent = S.voice ? 'VOICE: ON' : 'VOICE: OFF'; a.classList.toggle('on', S.voice); }
-      if (b) { b.textContent = S.voice ? 'ON' : 'OFF'; }
+      if (b) { b.textContent = S.voice ? 'ON' : 'OFF'; b.classList.toggle('on', S.voice); }
       if (badge) { badge.textContent = S.voice ? 'VOICE ON' : 'VOICE OFF'; badge.classList.toggle('live', S.voice); badge.classList.toggle('off', !S.voice); }
-      if (!S.voice) { try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {} }
+      if (!S.voice) {
+        if (spSpeakTimer) { clearTimeout(spSpeakTimer); spSpeakTimer = 0; }
+        disarmMediaVolume();
+        try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
+      } else {
+        armMediaVolume();
+      }
       if (announce && S.voice) speak('Voice navigation on.', true);
     }
     function routeCoords() {
@@ -1440,8 +1496,10 @@
     }, 1000);
     window.addEventListener('resize', kickMap);
     if (window.visualViewport) window.visualViewport.addEventListener('resize', kickMap);
-    document.getElementById('btnVoice').onclick = function(){ setVoice(!S.voice, true); };
     document.getElementById('btnVoice2').onclick = function(){ setVoice(!S.voice, true); };
+    if (window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = function(){ pickVoice(); };
+    }
     setVoice(S.voice);
     document.addEventListener('visibilitychange', function(){ S.hidden = document.hidden; if (!S.hidden) paint(); });
     paint();
@@ -1453,6 +1511,6 @@
     refreshVehBtn();
     setTimeout(kickMap, 200);
   </script>
-<script src="telemetry.js?v=20260910a"></script>
+<script src="telemetry.js?v=20260910v"></script>
 </body>
 </html>
