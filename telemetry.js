@@ -2,8 +2,7 @@
   var SRC = "storm-path";
   var URL = "https://core-api.dominic-calandro1991.workers.dev/api/v1/events";
   var NWS = "https://api.weather.gov/alerts/active/count";
-  var RADAR =
-    "https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qcd/ows?service=WMS&version=1.1.1&request=GetMap&layers=conus_bref_qcd&format=image/png&transparent=true&srs=CRS:84&bbox=-90,37,-88,39&width=64&height=64";
+  var RADAR = "https://api.rainviewer.com/public/weather-maps.json";
   var UA = "StormPath/1.0 (voltcore-org telemetry; https://github.com/voltcore-org/storm-path)";
   var frames = 0;
   var last = performance.now();
@@ -96,14 +95,7 @@
     var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 10000) : null;
     fetch(RADAR, { method: "GET", signal: ctrl ? ctrl.signal : undefined })
       .then(function (res) {
-        if (!res.ok) {
-          radarOk = false;
-          return null;
-        }
-        return res.arrayBuffer();
-      })
-      .then(function (buf) {
-        if (buf) radarOk = buf.byteLength > 32;
+        radarOk = Boolean(res.ok);
       })
       .catch(function () {
         radarOk = false;

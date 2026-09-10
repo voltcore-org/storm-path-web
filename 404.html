@@ -7,9 +7,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="STORMPATH" />
-  <meta name="description" content="Storm Path Web 1.6.0 — live GPS, native NEXRAD radar loop, 48-hour and 7-day NWS, Storm Clock drive window, Intersect Cone, on-device voice. Device GPS is the only LIVE NWS/NOAA trigger." />
-  <title>Storm Path Web 1.6.0</title>
-  <!-- web HUD = 1.6.0 radar loop + 7day pair + isolated alerts + storm clock 20260910g -->
+  <meta name="description" content="Storm Path Web 1.7.0 — live GPS, native NEXRAD radar loop, isolated 48-hour and 7-day NWS, Storm Clock drive window, Intersect Cone, on-device voice. Device GPS is the only LIVE NWS/NOAA trigger." />
+  <title>Storm Path Web 1.7.0</title>
+  <!-- web HUD = 1.7.0 isolated sections + RadarScope stripped 20260910h -->
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
   <style>
@@ -259,6 +259,16 @@
     }
     .storm-path.show { display:block; }
     .storm-path b { display:block; letter-spacing:1px; font-size:10px; color:var(--cyan); }
+    .clock-hud {
+      position:absolute; left:10px; right:90px; bottom:148px; z-index:525;
+      background:rgba(6,13,20,.92); border:1px solid var(--border); color:var(--cyan);
+      padding:6px 10px; font:700 10px/1.3 "Courier New",monospace; letter-spacing:.4px;
+      pointer-events:none; display:none;
+    }
+    .clock-hud.show { display:block; }
+    .clock-hud.hot { border-color:var(--red); color:var(--red); }
+    .clock-hud.build { border-color:var(--amber); color:var(--amber); }
+    .clock-hud.under-path { bottom:198px; }
     .sheet { z-index:700; }
     .sheet h3 { margin:4px 0 12px; }
     .veh-grid, .intel-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
@@ -355,6 +365,7 @@
         <button class="gps-gate" id="gpsGate" type="button">USE MY LIVE GPS<span>Map is Murphysboro, IL — VIEW only. Device GPS is the only LIVE NWS / NOAA trigger. IP location is never GPS.</span></button>
         <div class="banner" id="alertBanner"></div>
         <div class="storm-path" id="stormPath"></div>
+        <div class="clock-hud" id="mapClock"></div>
         <div class="radar-key" id="radarKey">RADAR WAIT</div>
         <div class="next" id="nextHud">
           <div class="mi" id="nextMi">—</div>
@@ -408,7 +419,7 @@
         <div class="row"><div><b>Speed units</b><span>Live GPS speed from this device</span></div><button class="toggle" id="setUnits">MPH</button></div>
         <div class="row"><div><b>Map tiles</b><span>OpenStreetMap dark basemap</span></div><button class="toggle" type="button">OSM</button></div>
         <div class="row"><div><b>Voice nav</b><span>Turn-by-turn at full phone volume. Use the iPhone volume buttons to go louder or quieter — nothing in the HUD caps it.</span></div><button class="toggle" id="btnVoice2" type="button">OFF</button></div>
-        <div class="row"><div><b>Storm Path Web 1.6.0</b><span>Live device GPS, native NEXRAD radar loop, 48-hour and 7-day NWS, Storm Clock drive window, OpenStreetMap, OSRM, Intersect Cone, voice. First finite GPS fix is the only NWS / NOAA trigger that can leave SAFE MODE. AND-GATE requires GPS ∧ NWS ∧ radar. IP location is never GPS.</span></div></div>
+        <div class="row"><div><b>Storm Path Web 1.7.0</b><span>Live device GPS, native NEXRAD radar loop, isolated 48-hour and 7-day NWS, Storm Clock drive window, OpenStreetMap, OSRM, Intersect Cone, voice. First finite GPS fix is the only NWS / NOAA trigger that can leave SAFE MODE. AND-GATE requires GPS ∧ NWS ∧ radar. IP location is never GPS.</span></div></div>
         <div class="row"><div><b>Driver intel</b><span>Remove pins stored on this device</span></div><button class="toggle" id="clearIntel" type="button">CLEAR</button></div>
         <p><a href="privacy.html" style="color:var(--cyan)">Privacy policy</a></p>
       </div></section>
@@ -464,7 +475,7 @@
   <script>
     const VIEW = { lat: 37.7645, lon: -89.3351 };
     const RANK = { normal:0, caution:1, danger:2, stop:3 };
-    const UA = 'StormPath/1.6.0-web (voltcore-org hud; https://github.com/voltcore-org/storm-path-web; dominic.calandro1991@yahoo.com)';
+    const UA = 'StormPath/1.7.0-web (voltcore-org hud; https://github.com/voltcore-org/storm-path-web; dominic.calandro1991@yahoo.com)';
     const SOURCES = ['NOAA','NWS','DOT','EMERG MGMT','ROAD CLOSURES','SHELTERS'];
     const LS_VEH = 'sp.vehicle.v1';
     const LS_VOICE = 'sp.voice.v1';
@@ -560,7 +571,7 @@
         if (S.radarAt) items.push({ id:'noaa-rv', source:'NOAA', title:'NEXRAD MOSAIC', body:'RainViewer / NOAA NEXRAD tiles at the live clock.', when: new Date(S.radarAt*1000).toLocaleString() });
         if (S.radarTiles === 'ncep-wms') items.push({ id:'noaa-wms', source:'NOAA', title:'NCEP CONUS REFLECTIVITY', body:'NOAA OpenGeo conus_bref_qcd WMS fallback.', when: '' });
         S.reports.NOAA = items;
-        S.srcOk.NOAA = !!(S.radar || S.radarUrl || S.radarAt);
+        S.srcOk.NOAA = !!(S.radar || S.radarAt);
       })());
       jobs.push((async function(){
         S.reports.NWS = (S.alerts || []).map(function(a, i){
@@ -618,7 +629,7 @@
         S.srcOk.SHELTERS = !!(body && Array.isArray(body.features));
       })());
       await Promise.all(jobs);
-      paint();
+      paintGate();
       if (document.getElementById('srcRail').classList.contains('open')) renderSrcRail();
     }
     function spComputeNextState(g, w, r, last) { return (g && w && r) ? (last || 'normal') : 'safe'; }
@@ -635,7 +646,7 @@
       return worst;
     }
     const Bus = { s:Object.create(null), on:function(ch,fn){ (this.s[ch]=this.s[ch]||[]).push(fn); }, emit:function(ch,payload){ const a=this.s[ch]||[]; for (let i=0;i<a.length;i++){ try{ a[i](payload); }catch(e){} } } };
-    const S = { screen:'map', gps:false, wx:false, radar:false, voice: !!lsRead(LS_VOICE, false), last:null, coords:null, view:{ lat:VIEW.lat, lon:VIEW.lon, why:'murphysboro' }, dest:null, route:null, hourly:null, hours:[], days:[], clock:{ risk:'CLEAR', copy:'Awaiting forecast samples.', slots:[] }, rvPlay:true, alerts:[], radarUrl:null, speed:null, step:null, lastSpoken:'', units:'MPH', vehView:null, intelPick:null, cam:{ mode:'follow', prog:false }, reports:{}, srcOk:{}, srcTab:'NWS', dismissed: lsRead('sp.dismiss.v1', []), cone:{ risk:'CLEAR', copy:'Awaiting GPS + route + radar samples.', samples:0 }, hidden:false };
+    const S = { screen:'map', gps:false, wx:false, radar:false, voice: !!lsRead(LS_VOICE, false), last:null, coords:null, view:{ lat:VIEW.lat, lon:VIEW.lon, why:'murphysboro' }, dest:null, route:null, hourly:null, hours:[], days:[], clock:{ risk:'CLEAR', copy:'Awaiting forecast samples.', slots:[] }, rvPlay:true, alerts:[], grid:null, speed:null, step:null, lastSpoken:'', units:'MPH', vehView:null, intelPick:null, cam:{ mode:'follow', prog:false }, reports:{}, srcOk:{}, srcTab:'NWS', dismissed: lsRead('sp.dismiss.v1', []), cone:{ risk:'CLEAR', copy:'Awaiting GPS + route + radar samples.', samples:0 }, hidden:false };
     const map = L.map('map', { zoomControl:false, minZoom:2, maxZoom:19, worldCopyJump:true }).setView([VIEW.lat, VIEW.lon], 13);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { minZoom:2, maxZoom:19, attribution:'&copy; OpenStreetMap', className:'sp-base-tiles' }).addTo(map);
     const intelLayer = L.layerGroup().addTo(map);
@@ -1051,11 +1062,13 @@
       document.getElementById('nextIns').textContent = S.step ? S.step.ins : (S.dest ? 'Head toward destination' : 'Set a destination');
       document.getElementById('nextDst').textContent = S.dest ? S.dest.label : 'SEARCH TO NAVIGATE';
     }
-    function paint() {
+    function paintGate() {
       const state = spComputeNextState(S.gps, S.wx, S.radar, S.last);
       const label = state === 'safe' ? 'SAFE MODE' : state.toUpperCase();
-      document.getElementById('drvState').textContent = label;
-      document.getElementById('wxState').textContent = label;
+      const drvState = document.getElementById('drvState');
+      const wxState = document.getElementById('wxState');
+      if (drvState) drvState.textContent = label;
+      if (wxState) wxState.textContent = label;
       document.getElementById('drvLive').textContent = S.gps ? 'LIVE FIX' : 'READY';
       document.getElementById('drvTitle').textContent = S.gps ? "You're live" : "You're on the map";
       document.getElementById('drvCopy').textContent = S.gps
@@ -1089,11 +1102,11 @@
         const on = !!S.srcOk[n];
         return `<button type="button" class="chip-src${on?' on':''}" data-src="${n}">${n}</button>`;
       }).join('');
-      renderWxCurrent();
-      renderHourly();
-      renderSeven();
-      renderClock();
-      paintRadarKey();
+      const gate = document.getElementById('gpsGate');
+      if (gate) gate.hidden = !!S.gps;
+      paintMapSynergy();
+    }
+    function paintMapSynergy() {
       const spb = document.getElementById('stormPath');
       if (spb) {
         if (S.stormPath) {
@@ -1107,11 +1120,27 @@
           spb.textContent = '';
         }
       }
+      const clk = document.getElementById('mapClock');
+      if (clk) {
+        const c = S.clock || { risk:'CLEAR', copy:'', slots:[] };
+        const has = (c.slots && c.slots.length) || c.risk === 'IMPACT';
+        clk.textContent = (c.risk || 'CLEAR') + ' · ' + driveWindowCopy(c);
+        clk.classList.toggle('show', !!has);
+        clk.classList.toggle('hot', c.risk === 'IMPACT');
+        clk.classList.toggle('build', c.risk === 'BUILD' || c.risk === 'WATCH');
+        clk.classList.toggle('under-path', !!(spb && spb.classList.contains('show')));
+      }
+    }
+    function paint() {
+      paintGate();
+      renderWxCurrent();
+      renderHourly();
+      renderSeven();
+      renderClock();
+      paintRadarKey();
       if (rvLayers.length) radarShowFrame(rvIdx);
       paintDriverRoute();
       paintSpeed();
-      const gate = document.getElementById('gpsGate');
-      if (gate) gate.hidden = !!S.gps;
       refreshVehBtn();
       renderIntelMarkers();
     }
@@ -1583,58 +1612,95 @@
       return { lat: midLat + dLat / hyp * deg, lon: midLon + dLon / hyp * deg };
     }
     function nwsHeaders() { return { Accept:'application/geo+json', 'User-Agent': UA }; }
-    async function loadAtmosphere(lat, lon, live) {
-      const point = lat.toFixed(4)+','+lon.toFixed(4);
+    function biasPoint() { return S.coords || S.view || VIEW; }
+    function parseAlertFeat(f) {
+      const pr = (f && f.properties) || {};
+      let expires = '';
+      try { if (pr.expires) expires = new Date(pr.expires).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }); } catch (e) {}
+      return { event: pr.event, severity: pr.severity, urgency: pr.urgency, headline: pr.headline, area: pr.areaDesc, expires };
+    }
+    async function nwsGrid(lat, lon) {
       try {
-        const pts = await fetch('https://api.weather.gov/points/'+point, { headers: nwsHeaders() }).then(r=>r.json());
-        const p = pts.properties;
-        const hourlyUrl = `https://api.weather.gov/gridpoints/${p.gridId}/${p.gridX},${p.gridY}/forecast/hourly`;
-        const sevenUrl = `https://api.weather.gov/gridpoints/${p.gridId}/${p.gridX},${p.gridY}/forecast`;
-        const alertsUrl = `https://api.weather.gov/alerts/active?point=${point}`;
-        const [h, a, d] = await Promise.all([
-          fetch(hourlyUrl,{headers:nwsHeaders()}).then(r=>r.json()),
-          fetch(alertsUrl,{headers:nwsHeaders()}).then(r=>r.json()),
-          fetch(sevenUrl,{headers:nwsHeaders()}).then(r=>r.json()).catch(function(){ return null; })
-        ]);
-        const per = h.properties.periods[0];
+        const pts = await fetch('https://api.weather.gov/points/'+lat.toFixed(4)+','+lon.toFixed(4), { headers: nwsHeaders() }).then(function(r){ return r.json(); });
+        const p = pts && pts.properties;
+        if (!p || !p.gridId) return S.grid || null;
+        S.grid = { id:p.gridId, x:p.gridX, y:p.gridY, lat:lat, lon:lon };
+        return S.grid;
+      } catch (e) { return S.grid || null; }
+    }
+    async function loadHourly(live) {
+      const g = S.grid;
+      if (!g) return false;
+      try {
+        const h = await fetch('https://api.weather.gov/gridpoints/'+g.id+'/'+g.x+','+g.y+'/forecast/hourly', { headers: nwsHeaders() }).then(function(r){ return r.json(); });
+        const per = h && h.properties && h.properties.periods && h.properties.periods[0];
+        if (!per) throw new Error('hourly');
         S.hourly = { temperature: per.temperature+'°'+per.temperatureUnit, wind: (per.windDirection||'')+' '+(per.windSpeed||''), humidity: (per.relativeHumidity&&per.relativeHumidity.value!=null)? per.relativeHumidity.value+'%':'N/A' };
         S.hours = (h.properties.periods||[]).slice(0,48).map(function(p){
           const pop = p.probabilityOfPrecipitation && p.probabilityOfPrecipitation.value;
-          return {
-            when: new Date(p.startTime).toLocaleTimeString([], { hour:'numeric' }),
-            temp: p.temperature+'°',
-            wind: p.windSpeed || '',
-            forecast: p.shortForecast || '',
-            pop: pop
-          };
+          return { when: new Date(p.startTime).toLocaleTimeString([], { hour:'numeric' }), temp: p.temperature+'°', wind: p.windSpeed || '', forecast: p.shortForecast || '', pop: pop };
         });
+        if (live) S.wx = true;
+        S._hourlyAt = Date.now();
+        Bus.emit('hourly', S.hours);
+        Bus.emit('wx', S);
+        stepClock();
+        return true;
+      } catch (e) {
+        if (live) S.wx = false;
+        Bus.emit('wx', S);
+        return false;
+      }
+    }
+    async function loadSeven() {
+      const g = S.grid;
+      if (!g) return false;
+      try {
+        const d = await fetch('https://api.weather.gov/gridpoints/'+g.id+'/'+g.x+','+g.y+'/forecast', { headers: nwsHeaders() }).then(function(r){ return r.json(); }).catch(function(){ return null; });
         S.days = pairSeven(((d && d.properties && d.properties.periods) || []).map(function(p){
           return { name:p.name, temp:p.temperature+'°'+(p.temperatureUnit||'F'), short:p.shortForecast||'', detail:p.detailedForecast||'', wind:p.windSpeed||'', night:/night/i.test(p.name||'') };
         }));
-        S.alerts = (a.features||[]).map(f => {
-          const pr = f.properties || {};
-          let expires = '';
-          try { if (pr.expires) expires = new Date(pr.expires).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }); } catch (e) {}
-          return { event: pr.event, severity: pr.severity, urgency: pr.urgency, headline: pr.headline, area: pr.areaDesc, expires };
-        });
+        S._sevenAt = Date.now();
+        Bus.emit('forecast7', S.days);
+        stepClock();
+        return true;
+      } catch (e) { return false; }
+    }
+    async function pullAlerts(lat, lon, live) {
+      try {
+        const a = await fetch('https://api.weather.gov/alerts/active?point='+lat.toFixed(4)+','+lon.toFixed(4), { headers: nwsHeaders() }).then(function(r){ return r.json(); });
+        const next = (a.features||[]).map(parseAlertFeat);
+        const fp = next.map(function(x){ return x.event+'|'+(x.headline||''); }).join('\n');
+        const prev = (S.alerts||[]).map(function(x){ return x.event+'|'+(x.headline||''); }).join('\n');
+        S.alerts = next;
         S.alertGeoms = (a.features||[]).filter(function(f){
           const ev = (f.properties && f.properties.event) || '';
           return /tornado|thunderstorm|flash flood|blizzard|winter storm|hurricane|cyclone|ice storm|dust storm/i.test(ev);
         }).map(function(f){ return { event: f.properties.event, geom: f.geometry }; });
-        S.last = live ? evaluate(S.alerts) : S.last;
-        S.wx = !!live;
-      } catch (e) { if (live) S.wx = false; }
-      S._wxAt = Date.now();
-      await loadRadarTiles();
+        if (live) S.last = evaluate(S.alerts);
+        if (fp !== prev) {
+          computeCone();
+          stepClock();
+          Bus.emit('alerts', S.alerts);
+          paintGate();
+        }
+        return true;
+      } catch (e) { return false; }
+    }
+    async function loadAtmosphere(lat, lon, live) {
+      await nwsGrid(lat, lon);
+      await Promise.all([
+        loadHourly(!!live),
+        loadSeven(),
+        pullAlerts(lat, lon, !!live),
+        loadRadarTiles()
+      ]);
       S.radar = !!live && !!(S.radarAt || S.radarTiles);
+      S._wxAt = Date.now();
       computeCone();
       stepClock();
-      Bus.emit('wx', S);
-      Bus.emit('hourly', S.hours);
-      Bus.emit('forecast7', S.days);
-      Bus.emit('alerts', S.alerts);
       Bus.emit('gps', S.coords || S.view);
-      paint();
+      paintGate();
       loadOfficialSources();
     }
     async function loadRadarTiles() {
@@ -1654,7 +1720,6 @@
         radarTiles.addTo(map);
         S.radarAt = last.time;
         S.radarTiles = url;
-        S.radarUrl = null;
         loadRadarEngine(host, past.concat(nowcast), nowcast);
         return true;
       } catch (e) {
@@ -1666,7 +1731,6 @@
         radarTiles.addTo(map);
         S.radarAt = Math.floor(Date.now()/1000);
         S.radarTiles = 'ncep-wms';
-        S.radarUrl = null;
         if (!radarMap) initRadarEngine();
         rvLayers.forEach(function(ly){ try { radarMap.removeLayer(ly); } catch (e2) {} });
         rvLayers = []; rvTimes = []; rvNowcast = {};
@@ -1756,7 +1820,7 @@
       S.dest = null; S.route = null; S._routeCoords = []; S.remainSec = null; S.step = null; S.stormPath = null; S.lastSpoken = '';
       if (line) { try { map.removeLayer(line); } catch (e) {} line = null; }
       if (destMark) { try { map.removeLayer(destMark); } catch (e) {} destMark = null; }
-      computeCone(); paintEta(); stepClock(); paint(); toast('ROUTE CLEARED');
+      computeCone(); paintEta(); stepClock(); paintGate(); paintDriverRoute(); toast('ROUTE CLEARED');
     }
     document.getElementById('gpsGate').onclick = requestGps;
     document.getElementById('btnGps').onclick = requestGps;
@@ -1796,43 +1860,44 @@
     };
     Bus.on('hourly', renderHourly);
     Bus.on('forecast7', renderSeven);
-    Bus.on('clock', renderClock);
-    Bus.on('wx', renderWxCurrent);
+    Bus.on('clock', function(){ renderClock(); paintMapSynergy(); });
+    Bus.on('wx', function(){ renderWxCurrent(); paintGate(); });
     Bus.on('alerts', function(){ renderAlerts(); });
     Bus.on('radar', paintRadarKey);
+    Bus.on('cone', paintGate);
+    Bus.on('gps', paintGate);
     async function refreshAlerts() {
-      if (S.hidden || !S.gps || !S.coords) return;
-      const point = S.coords.lat.toFixed(4)+','+S.coords.lon.toFixed(4);
-      try {
-        const a = await fetch('https://api.weather.gov/alerts/active?point='+point, { headers: nwsHeaders() }).then(function(r){ return r.json(); });
-        const next = (a.features||[]).map(function(f){
-          const pr = f.properties || {};
-          let expires = '';
-          try { if (pr.expires) expires = new Date(pr.expires).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }); } catch (e) {}
-          return { event: pr.event, severity: pr.severity, urgency: pr.urgency, headline: pr.headline, area: pr.areaDesc, expires };
-        });
-        const fp = next.map(function(x){ return x.event+'|'+(x.headline||''); }).join('\n');
-        const prev = (S.alerts||[]).map(function(x){ return x.event+'|'+(x.headline||''); }).join('\n');
-        if (fp === prev) return;
-        S.alerts = next;
-        S.alertGeoms = (a.features||[]).filter(function(f){
-          const ev = (f.properties && f.properties.event) || '';
-          return /tornado|thunderstorm|flash flood|blizzard|winter storm|hurricane|cyclone|ice storm|dust storm/i.test(ev);
-        }).map(function(f){ return { event: f.properties.event, geom: f.geometry }; });
-        S.last = evaluate(S.alerts);
-        computeCone();
-        stepClock();
-        Bus.emit('alerts', S.alerts);
-        const ticker = document.getElementById('ticker');
-        if (ticker) ticker.textContent = S.alerts[0] ? S.alerts.map(function(a){ return a.event; }).join(' · ') : 'NO ACTIVE NWS ALERTS AT THE LIVE FIX';
-      } catch (e) {}
+      if (S.hidden) return;
+      const p = biasPoint();
+      await pullAlerts(p.lat, p.lon, !!S.gps);
     }
-    document.addEventListener('visibilitychange', function(){ S.hidden = document.hidden; if (!S.hidden) paint(); });
+    async function tickHourly() {
+      if (S.hidden) return;
+      const p = biasPoint();
+      await nwsGrid(p.lat, p.lon);
+      await loadHourly(!!S.gps);
+      paintGate();
+    }
+    async function tickSeven() {
+      if (S.hidden) return;
+      const p = biasPoint();
+      await nwsGrid(p.lat, p.lon);
+      await loadSeven();
+    }
+    async function tickRadar() {
+      if (S.hidden) return;
+      await loadRadarTiles();
+      S.radar = !!S.gps && !!(S.radarAt || S.radarTiles);
+      paintGate();
+    }
+    document.addEventListener('visibilitychange', function(){ S.hidden = document.hidden; if (!S.hidden) paintGate(); });
     paint();
     applyView(VIEW.lat, VIEW.lon, 'murphysboro');
     initRadarEngine();
     loadRadarTiles();
-    setInterval(function(){ if (!S.hidden) loadRadarTiles(); }, 3*60*1000);
+    setInterval(tickRadar, 3*60*1000);
+    setInterval(tickHourly, 10*60*1000);
+    setInterval(tickSeven, 30*60*1000);
     setInterval(radarTick, 700);
     setInterval(function(){ if (!S.hidden) refreshAlerts(); }, 120*1000);
     loadOfficialSources();
@@ -1841,6 +1906,6 @@
     setTimeout(kickMap, 200);
     setTimeout(kickRadar, 400);
   </script>
-<script src="telemetry.js?v=20260910g"></script>
+<script src="telemetry.js?v=20260910h"></script>
 </body>
 </html>
