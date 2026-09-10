@@ -46,6 +46,13 @@
       gpsAccuracy = 0;
       return;
     }
+    var gpsEl = document.getElementById("top-gps-label");
+    var label = gpsEl && gpsEl.textContent ? String(gpsEl.textContent) : "";
+    if (label.indexOf("LIVE") === -1) {
+      gpsState = "idle";
+      gpsAccuracy = 0;
+      return;
+    }
     try {
       navigator.geolocation.getCurrentPosition(
         function (pos) {

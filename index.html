@@ -7,8 +7,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="STORMPATH" />
+  <meta name="description" content="Storm Path Web 1.4.0 — live GPS, NWS, NOAA radar, Intersect Cone, and on-device voice nav. Device GPS is the only LIVE NWS/NOAA trigger." />
   <title>Storm Path Web 1.4.0</title>
-  <!-- web HUD = 1.4.0 voice + intersect cone 20260909w -->
+  <!-- web HUD = 1.4.0 voice + intersect cone 20260910a -->
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
   <style>
@@ -288,6 +289,7 @@
         </div>
         <button class="btn primary" id="btnSearch">START DRIVE</button>
         <button class="btn ghost" id="btnGps">USE MY LIVE GPS</button>
+        <button class="btn ghost" id="btnClear" type="button" hidden>CLEAR ROUTE</button>
         <div class="kicker" style="margin-top:18px">TIME TO ARRIVE</div>
         <div class="clockrow" id="eta">
           <div class="cell"><b>0</b><span>DAYS</span></div>
@@ -581,7 +583,7 @@
       for (const a of list) { const c = classify(a); if (RANK[c] > RANK[worst]) worst = c; }
       return worst;
     }
-    const S = { screen:'map', gps:false, wx:false, radar:false, voice: !!lsRead(LS_VOICE, false), last:null, coords:null, view:{ lat:VIEW.lat, lon:VIEW.lon, why:'murphysboro' }, dest:null, route:null, hourly:null, hours:[], alerts:[], radarUrl:null, speed:null, step:null, lastSpoken:'', units:'MPH', vehView:null, intelPick:null, cam:{ mode:'follow', prog:false }, reports:{}, srcOk:{}, srcTab:'NWS', dismissed: lsRead('sp.dismiss.v1', []), cone:null, hidden:false };
+    const S = { screen:'map', gps:false, wx:false, radar:false, voice: !!lsRead(LS_VOICE, false), last:null, coords:null, view:{ lat:VIEW.lat, lon:VIEW.lon, why:'murphysboro' }, dest:null, route:null, hourly:null, hours:[], alerts:[], radarUrl:null, speed:null, step:null, lastSpoken:'', units:'MPH', vehView:null, intelPick:null, cam:{ mode:'follow', prog:false }, reports:{}, srcOk:{}, srcTab:'NWS', dismissed: lsRead('sp.dismiss.v1', []), cone:{ risk:'CLEAR', copy:'Awaiting GPS + route + radar samples.', samples:0 }, hidden:false };
     const map = L.map('map', { zoomControl:false, minZoom:2, maxZoom:19, worldCopyJump:true }).setView([VIEW.lat, VIEW.lon], 13);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { minZoom:2, maxZoom:19, attribution:'&copy; OpenStreetMap', className:'sp-base-tiles' }).addTo(map);
     const intelLayer = L.layerGroup().addTo(map);
@@ -645,11 +647,23 @@
       if (a) { a.textContent = S.voice ? 'VOICE: ON' : 'VOICE: OFF'; a.classList.toggle('on', S.voice); }
       if (b) { b.textContent = S.voice ? 'ON' : 'OFF'; }
       if (badge) { badge.textContent = S.voice ? 'VOICE ON' : 'VOICE OFF'; badge.classList.toggle('live', S.voice); badge.classList.toggle('off', !S.voice); }
+      if (!S.voice) { try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {} }
       if (announce && S.voice) speak('Voice navigation on.', true);
+    }
+    function routeCoords() {
+      if (S._routeCoords && S._routeCoords.length) return S._routeCoords;
+      if (!line || !line.toGeoJSON) return [];
+      try {
+        const gj = line.toGeoJSON();
+        if (gj && gj.features && gj.features[0] && gj.features[0].geometry) return gj.features[0].geometry.coordinates || [];
+        if (gj && gj.geometry) return gj.geometry.coordinates || [];
+      } catch (e) {}
+      return [];
     }
     function computeCone() {
       if (coneLayer) coneLayer.clearLayers();
-      const coords = (line && line.toGeoJSON && line.toGeoJSON().features && line.toGeoJSON().features[0] && line.toGeoJSON().features[0].geometry && line.toGeoJSON().features[0].geometry.coordinates) || (S._routeCoords || []);
+      const coords = routeCoords();
+      const prev = S.cone && S.cone.risk;
       if (!coords.length || !S.route) {
         S.cone = { risk:'CLEAR', copy:'Awaiting GPS + route + radar samples.', samples:0 };
         return;
@@ -657,6 +671,9 @@
       const stride = Math.max(1, Math.floor(coords.length / 24));
       const pts = [];
       for (let i = 0; i < coords.length; i += stride) pts.push({ lon: coords[i][0], lat: coords[i][1] });
+      const last = coords[coords.length - 1];
+      const tail = pts[pts.length - 1];
+      if (!tail || tail.lon !== last[0] || tail.lat !== last[1]) pts.push({ lon: last[0], lat: last[1] });
       const geoms = S.alertGeoms || [];
       const hits = [];
       pts.forEach(function(p){
@@ -678,7 +695,13 @@
       pts.forEach(function(p, idx){
         L.circleMarker([p.lat, p.lon], { radius: idx===0?5:3, color:color, weight:1, fillOpacity:0.5 }).addTo(coneLayer);
       });
-      if (risk === 'INTERSECT' && S.voice) speak('Storm intersect on route. ' + copy);
+      if (risk === 'INTERSECT' && S.voice && prev !== 'INTERSECT') speak('Storm intersect on route. ' + copy);
+      const coneCopy = document.getElementById('coneCopy');
+      const coneCard = document.getElementById('coneCard');
+      if (coneCopy && S.cone) {
+        coneCopy.textContent = S.cone.risk + ' · ' + S.cone.copy;
+        if (coneCard) coneCard.classList.toggle('hot', S.cone.risk === 'INTERSECT');
+      }
     }
 
     function paint() {
@@ -692,6 +715,8 @@
         ? 'Live GPS is on. Search a town or address, then Start Drive. Weather and radar stay on the live fix.'
         : 'Map opens on Murphysboro, Illinois — VIEW only. Device GPS is the only LIVE NWS / NOAA trigger. IP location is never GPS.';
       document.getElementById('btnGps').hidden = !!S.gps;
+      const clr = document.getElementById('btnClear');
+      if (clr) clr.hidden = !S.dest;
       document.getElementById('andGate').textContent = `GPS=${S.gps} WX=${S.wx} RADAR=${S.radar}`;
       document.getElementById('drvConf').textContent = S.gps && S.wx && S.radar
         ? 'CONFIDENCE: HIGH  LIVE'
@@ -1293,6 +1318,7 @@
       S.radarUrl = radar;
       await loadRadarTiles();
       S.radar = !!live && !!S.radarAt;
+      computeCone();
       paint();
       loadOfficialSources();
     }
@@ -1342,7 +1368,7 @@
         S.cam.mode = 'follow';
         camShowRecenter();
         await loadAtmosphere(lat, lon, true);
-      } else if (!S._wxAt || Date.now() - S._wxAt > 5*60*1000) {
+      } else if (!S._wxAt || Date.now() - S._wxAt > 3*60*1000) {
         S._wxAt = Date.now();
         loadAtmosphere(lat, lon, true);
       }
@@ -1382,8 +1408,15 @@
         if (isFinite(lat) && isFinite(lon)) applyView(lat, lon, 'network');
       }).catch(()=>{});
     }
+    function clearRoute() {
+      S.dest = null; S.route = null; S._routeCoords = []; S.remainSec = null; S.step = null; S.stormPath = null; S.lastSpoken = '';
+      if (line) { try { map.removeLayer(line); } catch (e) {} line = null; }
+      if (destMark) { try { map.removeLayer(destMark); } catch (e) {} destMark = null; }
+      computeCone(); paintEta(); paint(); toast('ROUTE CLEARED');
+    }
     document.getElementById('gpsGate').onclick = requestGps;
     document.getElementById('btnGps').onclick = requestGps;
+    document.getElementById('btnClear').onclick = clearRoute;
     document.getElementById('srcChips').addEventListener('click', function(e){
       const b = e.target.closest('[data-src]');
       if (b) openSrcRail(b.getAttribute('data-src'));
@@ -1414,13 +1447,12 @@
     paint();
     applyView(VIEW.lat, VIEW.lon, 'murphysboro');
     loadRadarTiles();
-    setInterval(function(){ if (!S.hidden) loadRadarTiles(); }, 10*60*1000);
+    setInterval(function(){ if (!S.hidden) loadRadarTiles(); }, 3*60*1000);
     loadOfficialSources();
     renderIntelMarkers();
     refreshVehBtn();
     setTimeout(kickMap, 200);
-    requestGps();
   </script>
-<script src="telemetry.js?v=20260909w"></script>
+<script src="telemetry.js?v=20260910a"></script>
 </body>
 </html>
